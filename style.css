@@ -1,0 +1,623 @@
+/* ==============================
+   style.css - 样式表
+   ============================== */
+:root {
+    --theme-purple: #9B9ECE;
+    /* 主色：莫兰迪紫 */
+    --theme-purple-dark: #7a7db3;
+    /* 深一点的紫 */
+    --theme-bg: #F9F9FC;
+    /* APP背景：冷调暖白 */
+    --theme-text: #444444;
+    /* 字体颜色：深灰 */
+    --card-shadow: 0 4px 12px rgba(155, 158, 206, 0.15);
+    /* 卡片阴影 */
+}
+
+html {
+    -webkit-text-size-adjust: 100%;
+    height: 100%;
+}
+
+body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    background-color: #f0f2f5;
+    height: 100%;
+    overflow: hidden;
+    /* 禁止 body 滚动 */
+    user-select: none;
+    -webkit-user-select: none;
+}
+
+/* 手机屏幕容器 */
+#phone-screen {
+    width: 100%;
+    height: 100vh;
+    position: relative;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    background: linear-gradient(135deg, #a1c4fd 0%, #c2e9fb 100%);
+    /* 换了个清新的壁纸 */
+    background-size: cover;
+}
+
+
+
+/* --- 桌面图标 --- */
+#home-screen {
+    padding-top: calc(40px + env(safe-area-inset-top));
+    flex-grow: 1;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+}
+
+#desktop-app-container {
+    display: flex;
+    gap: 25px;
+    flex-wrap: wrap;
+    justify-content: center;
+    padding: 20px;
+}
+
+.desktop-app-icon {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    width: 64px;
+    transition: transform 0.1s;
+}
+
+.desktop-app-icon:active {
+    transform: scale(0.9);
+    filter: brightness(0.9);
+}
+
+.icon-bg-desktop {
+    width: 60px;
+    height: 60px;
+    border-radius: 14px;
+    background: #fff;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+}
+
+.label {
+    color: white;
+    font-size: 12px;
+    font-weight: 500;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+/* --- APP 窗口 --- */
+.app-window {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--theme-bg);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    transform: translate3d(100%, 0, 0);
+    transition: transform 0.35s cubic-bezier(0.32, 1, 0.23, 1);
+}
+
+.app-window.open {
+    transform: translate3d(0, 0, 0);
+}
+
+/* --- 头部 --- */
+.app-header {
+    background: #fff;
+    padding-bottom: 5px;
+    flex-shrink: 0;
+    z-index: 20;
+}
+
+.header-content {
+    display: flex;
+    align-items: center;
+    height: 44px;
+    padding: 0 10px;
+    position: relative;
+}
+
+.header-left {
+    width: 40px;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    z-index: 20;
+    cursor: pointer;
+}
+
+/* 新增 header-right */
+.header-right {
+    position: absolute;
+    /* 绝对定位在右侧 */
+    right: 10px;
+    top: 0;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    z-index: 20;
+    cursor: pointer;
+}
+
+.header-right svg {
+    transition: transform 0.2s;
+    /* 这里的 fill 已经在 HTML 行内设置了 #9B9ECE，也可以在这里统一设 var(--theme-purple) */
+}
+
+.header-right:active svg {
+    transform: scale(0.9);
+    opacity: 0.8;
+}
+
+.header-left svg {
+    fill: var(--theme-text);
+}
+
+.header-title {
+    position: absolute;
+    left: 0;
+    width: 100%;
+    text-align: center;
+    pointer-events: none;
+}
+
+#app-title-text {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--theme-text);
+}
+
+/* --- 内容区 --- */
+.app-body {
+    flex-grow: 1;
+    /* 允许内部内容滚动 */
+    overflow-y: auto;
+    /* iOS 惯性滚动，让手感顺滑 */
+    -webkit-overflow-scrolling: touch;
+
+    padding-top: 10px;
+    padding-bottom: 80px;
+
+    /* 防止底部被刘海屏或手势条遮挡 */
+    padding-bottom: calc(80px + env(safe-area-inset-bottom));
+}
+
+.tab-content {
+    display: none;
+    width: 100%;
+}
+
+.tab-content.active {
+    display: block;
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* --- 列表通用 --- */
+.chat-item,
+.contact-item,
+.menu-item,
+.me-card {
+    display: flex;
+    align-items: center;
+    padding: 16px;
+    background: #fff;
+    margin: 0 16px 12px 16px;
+    border-radius: 18px;
+    box-shadow: var(--card-shadow);
+    transition: transform 0.1s;
+}
+
+.chat-item:active,
+.contact-item:active,
+.menu-item:active {
+    transform: scale(0.98);
+    background: #fafafa;
+}
+
+.avatar,
+.me-avatar {
+    width: 50px;
+    height: 50px;
+    border-radius: 18px;
+    margin-right: 15px;
+    flex-shrink: 0;
+    background-color: #eee;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+    font-weight: bold;
+    background-size: cover;
+    background-position: center;
+}
+
+.me-avatar {
+    width: 70px;
+    height: 70px;
+    font-size: 24px;
+    border-radius: 50%;
+}
+
+.chat-info h4 {
+    margin: 0 0 4px 0;
+    font-size: 16px;
+    color: var(--theme-text);
+}
+
+.chat-info p {
+    margin: 0;
+    font-size: 13px;
+    color: #999;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 180px;
+}
+
+.chat-meta {
+    margin-left: auto;
+    font-size: 12px;
+    color: #bbb;
+}
+
+/* --- 底部导航 --- */
+.app-tabbar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: calc(60px + env(safe-area-inset-bottom));
+    background: #fff;
+    border-radius: 24px 24px 0 0;
+    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.03);
+    display: flex;
+    justify-content: space-around;
+    padding-bottom: env(safe-area-inset-bottom);
+    box-sizing: border-box;
+    z-index: 50;
+}
+
+.tab-item {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    color: #ccc;
+    cursor: pointer;
+}
+
+.tab-item.active {
+    color: var(--theme-purple);
+}
+
+.tab-item svg {
+    width: 26px;
+    height: 26px;
+    margin-bottom: 4px;
+    fill: #ccc;
+    transition: all 0.2s;
+}
+
+.tab-item.active svg {
+    fill: var(--theme-purple);
+    transform: scale(1.1);
+}
+
+.tab-item span {
+    font-size: 10px;
+    font-weight: 500;
+}
+
+/* --- 弹窗与表单 --- */
+.modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.3);
+    z-index: 200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    backdrop-filter: blur(5px);
+}
+
+.modal-card {
+    background: #fff;
+    width: 85%;
+    max-width: 340px;
+    border-radius: 24px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+    position: relative;
+    max-height: 85vh;
+    overflow-y: auto;
+}
+
+.close-modal {
+    position: absolute;
+    top: 15px;
+    right: 20px;
+    font-size: 24px;
+    color: #ccc;
+    cursor: pointer;
+}
+
+.persona-item {
+    display: flex;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid #f0f0f0;
+    border-radius: 12px;
+    margin-bottom: 10px;
+    cursor: pointer;
+}
+
+.persona-item.active {
+    border-color: var(--theme-purple);
+    background: #F9F9FC;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.input-style {
+    width: 100%;
+    padding: 12px;
+    margin: 5px 0;
+    border: 1px solid #eee;
+    border-radius: 12px;
+    box-sizing: border-box;
+    font-size: 16px;
+    background: #fcfcfc;
+    outline: none;
+    -webkit-appearance: none;
+}
+
+textarea.input-style {
+    resize: none;
+    height: 80px;
+    font-family: inherit;
+}
+
+.avatar-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+    justify-content: center;
+}
+
+.avatar-tab {
+    font-size: 12px;
+    padding: 4px 12px;
+    border-radius: 20px;
+    background: #eee;
+    color: #666;
+    cursor: pointer;
+}
+
+.avatar-tab.active {
+    background: var(--theme-purple);
+    color: white;
+}
+
+.btn-main {
+    width: 100%;
+    padding: 12px;
+    background: var(--theme-purple);
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 10px;
+}
+
+.btn-sec {
+    width: 100%;
+    padding: 12px;
+    background: #f0f0f0;
+    color: #666;
+    border: none;
+    border-radius: 12px;
+    margin-top: 8px;
+}
+
+.chat-footer {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    background: #fff;
+    padding: 10px 10px calc(10px + env(safe-area-inset-bottom)) 10px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    box-shadow: 0 -2px 10px rgba(0, 0, 0, 0.03);
+    z-index: 50;
+}
+
+.chat-input {
+    flex-grow: 1;
+    height: 40px;
+    border-radius: 20px;
+    border: none;
+    background: #F0F2F5;
+    padding: 0 15px;
+    font-size: 16px;
+    outline: none;
+    color: #333;
+}
+
+.icon-btn {
+    width: 40px;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.icon-btn:active {
+    background: #f0f0f0;
+}
+
+/* AI 发送按钮特殊样式 (紫色实心圆) */
+.ai-send-btn {
+    background: var(--theme-purple);
+    box-shadow: 0 4px 10px rgba(155, 158, 206, 0.4);
+}
+
+.ai-send-btn:active {
+    background: #8A8DBE;
+    transform: scale(0.95);
+}
+
+/* 消息气泡示例样式 (后面JS渲染会用到) */
+.msg-row {
+    display: flex;
+    align-items: flex-start;
+    /* 上下15px，左右10px -> 让头像更靠近屏幕边缘 */
+    margin: 15px 10px;
+}
+
+/* 2. 默认头像（对方/左边） */
+.avatar {
+    width: 40px;
+    height: 40px;
+    border-radius: 6px;
+    /* 稍微圆角一点 */
+    /* 头像右边给气泡留空隙 */
+    margin-right: 10px;
+    margin-left: 0;
+    flex-shrink: 0;
+}
+
+/* 3. "我"的消息（右边）特殊布局 */
+.msg-row.me {
+    flex-direction: row-reverse;
+}
+
+/* 4. 关键：修复"我"的头像间距 */
+.msg-row.me .avatar {
+    /* 去掉右边的间距，让它靠近屏幕边缘 */
+    margin-right: 0;
+    /* 在左边增加间距，把它推离气泡 */
+    margin-left: 10px;
+}
+
+/* 5. 气泡微调（可选，增加一点美观度） */
+.msg-bubble {
+    max-width: 70%;
+    padding: 10px 14px;
+    border-radius: 8px;
+    font-size: 15px;
+    line-height: 1.5;
+    word-wrap: break-word;
+    /* 防止长英文撑破 */
+}
+
+/* 对方的消息：白色 */
+.msg-row .msg-bubble {
+    background: #fff;
+    color: #333;
+    border-top-left-radius: 4px;
+}
+
+/* 我的消息：莫兰迪紫 */
+.msg-row.me .msg-bubble {
+    background: var(--theme-purple);
+    color: #fff;
+    border-top-right-radius: 4px;
+}
+
+/* --- style.css --- */
+
+/* 1. 强制固定好友列表项的高度，方便计算 */
+.contact-item {
+    height: 70px;
+    /* 固定高度 */
+    box-sizing: border-box;
+    margin: 0 16px 12px 16px;
+    /* 保持原有的样式，但去掉可能影响高度的不确定因素 */
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    /* 调整padding适应高度 */
+    overflow: hidden;
+    position: absolute;
+    /* 虚拟列表核心：绝对定位 */
+    width: calc(100% - 32px);
+    /* 减去左右 margin */
+    left: 0;
+}
+
+/* 2. 虚拟列表容器 */
+#contact-list-dynamic {
+    position: relative;
+    width: 100%;
+    /* 高度由 JS 动态计算撑开 */
+}
+
+/* 3. 滚动视口容器 (tab-contacts) */
+#tab-contacts {
+    height: 100%;
+    overflow-y: auto;
+    position: relative;
+}
+
+#chat-body {
+    background: #F9F9FC;
+    /* 之前是 padding-bottom: 70px; 现在改大一点，
+       因为 footer 高度约 60px + 安全区，留 100px 比较稳妥 */
+    padding-bottom: calc(60px + env(safe-area-inset-bottom)) !important;
+}
+
+::-webkit-scrollbar {
+    display: none;
+    /* 彻底隐藏滚动条 */
+    width: 0 !important;
+    height: 0 !important;
+}
+
+/* 针对 Firefox */
+* {
+    scrollbar-width: none;
+}
+
+/* 针对 IE/Edge (虽然你可能用不到) */
+* {
+    -ms-overflow-style: none;
+}
