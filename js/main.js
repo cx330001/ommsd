@@ -425,3 +425,253 @@ function escapeHtml(text) {
         .replace(/"/g, "&quot;")
         .replace(/'/g, "&#039;");
 }
+/* =========================================
+   Settings App Logic (修复增强版)
+   ========================================= */
+
+// 1. 打开子页面时加载数据
+window.openSubPage = async function (pageName) {
+    const el = document.getElementById('sub-page-' + pageName);
+    if (el) {
+        el.classList.add('active');
+        if (pageName === 'api') {
+            await loadApiSettings();
+        }
+    }
+};
+
+window.closeSubPage = function (pageName) {
+    const el = document.getElementById('sub-page-' + pageName);
+    if (el) {
+        el.classList.remove('active');
+        // 关闭时清理一下下拉列表
+        setTimeout(() => {
+            const list = document.getElementById('model-list-container');
+            if (list) {
+                list.classList.remove('open');
+                list.innerHTML = '';
+            }
+        }, 300);
+    }
+};
+
+// 2. 加载设置到界面
+// [新增] 切换 API 提供商逻辑
+window.toggleApiProvider = function (provider) {
+    const hostInput = document.getElementById('api-host');
+
+    if (provider === 'google') {
+        // Google 的 OpenAI 兼容地址
+        // 注意：Gemini 免费版通常每分钟有限制，且需要申请 API Key
+        hostInput.value = 'https://generativelanguage.googleapis.com/v1beta/openai';
+    } else {
+        // OpenAI 默认地址
+        hostInput.value = 'https://api.openai.com/v1';
+    }
+};
+
+// [修改] 加载设置到界面
+async function loadApiSettings() {
+    const hostRec = await window.dbSystem.settings.get('apiHost');
+    const keyRec = await window.dbSystem.settings.get('apiKey');
+    const modelRec = await window.dbSystem.settings.get('apiModel');
+    const providerRec = await window.dbSystem.settings.get('apiProvider'); // 获取保存的厂商
+
+    // 1. 设置厂商下拉框
+    const providerSelect = document.getElementById('api-provider');
+    if (providerRec) {
+        providerSelect.value = providerRec.value;
+    } else {
+        providerSelect.value = 'openai'; // 默认
+    }
+
+    // 2. 设置 Host
+    if (hostRec) {
+        document.getElementById('api-host').value = hostRec.value;
+    } else {
+        // 如果没有存过 Host，根据当前厂商设个默认值
+        window.toggleApiProvider(providerSelect.value);
+    }
+
+    // 3. 设置 Key
+    if (keyRec) document.getElementById('api-key').value = keyRec.value;
+
+    // 4. 设置模型文字
+    const displayEl = document.getElementById('current-model-text');
+    if (modelRec && modelRec.value) {
+        displayEl.innerText = modelRec.value;
+        displayEl.style.color = "#333";
+    } else {
+        displayEl.innerText = "请点击右侧按钮拉取模型 ->";
+        displayEl.style.color = "#ccc";
+    }
+}
+
+// [修改] 点击“保存配置”按钮
+window.manualSaveApi = async function () {
+    const provider = document.getElementById('api-provider').value; // 获取厂商
+    const host = document.getElementById('api-host').value.trim();
+    const key = document.getElementById('api-key').value.trim();
+    const currentModel = document.getElementById('current-model-text').innerText;
+
+    const modelToSave = (currentModel.includes('请点击') || currentModel.includes('->'))
+        ? '' : currentModel;
+
+    // 保存所有配置
+    await window.dbSystem.settings.put({ key: 'apiProvider', value: provider }); // 保存厂商
+    await window.dbSystem.settings.put({ key: 'apiHost', value: host });
+    await window.dbSystem.settings.put({ key: 'apiKey', value: key });
+
+    if (modelToSave) {
+        await window.dbSystem.settings.put({ key: 'apiModel', value: modelToSave });
+    }
+
+    alert("配置已保存！");
+};
+// 1. 获取 Key 列表 (自动处理逗号分隔)
+function getApiKeys() {
+    const raw = document.getElementById('api-key').value.trim();
+    if (!raw) return [];
+    // 按逗号切割，去空格，去空值
+    return raw.split(',').map(k => k.trim()).filter(k => k);
+}
+
+// 2. [核心] 轮询请求器 (自动换 Key 重试)
+// 参数: url, optionsBuilder(key) -> 返回 fetch 的 options
+async function requestWithKeyRotation(url, optionsBuilder) {
+    const keys = getApiKeys();
+
+    if (keys.length === 0) {
+        throw new Error("未填写 API Key");
+    }
+
+    let lastError = null;
+
+    // 遍历所有 Key 尝试
+    for (let i = 0; i < keys.length; i++) {
+        const currentKey = keys[i];
+
+        try {
+            console.log(`正在尝试第 ${i + 1} 个 Key...`);
+
+            // 构建带当前 Key 的请求头
+            const options = optionsBuilder(currentKey);
+
+            const response = await fetch(url, options);
+
+            // 如果成功，直接返回结果
+            if (response.ok) {
+                return response;
+            }
+
+            // 如果是 429 (超限) 或 403 (被封/权限不足)，则尝试下一个 Key
+            if (response.status === 429 || response.status === 403) {
+                console.warn(`Key ${i + 1} 失效或限流 (Status ${response.status})，尝试下一个...`);
+                continue; // 进入下一次循环
+            }
+
+            // 其他错误 (比如 404, 500) 通常换 Key 也没用，直接抛出
+            const errText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errText}`);
+
+        } catch (e) {
+            lastError = e;
+            // 如果是网络错误，也尝试下一个
+            console.warn(`Key ${i + 1} 网络错误`, e);
+        }
+    }
+
+    // 如果循环结束还没返回，说明所有 Key 都挂了
+    throw new Error("所有 API Key 均请求失败，请检查配额或网络。\n最后一次错误: " + (lastError ? lastError.message : "未知"));
+}
+window.fetchModels = async function (event) {
+    event.stopPropagation();
+
+    // 1. 获取基础配置
+    const host = document.getElementById('api-host').value.trim();
+    const box = document.querySelector('.model-selector-box');
+
+    // 简单的校验
+    const keys = getApiKeys();
+    if (keys.length === 0) return alert("请至少填写一个 API Key");
+
+    box.classList.add('fetching');
+
+    try {
+        // 2. 使用轮询请求器
+        const response = await requestWithKeyRotation(
+            `${host}/models`, // URL
+            (key) => {        // Options 构建函数
+                return {
+                    method: 'GET',
+                    headers: {
+                        'Authorization': `Bearer ${key}`,
+                        'Content-Type': 'application/json'
+                    }
+                };
+            }
+        );
+
+        // 3. 处理成功结果
+        const data = await response.json();
+        const models = data.data || [];
+        renderModelList(models);
+
+        // 提示一下用户
+        // alert(`成功拉取！当前使用的是第 ${keys.length} 个Key中的有效Key。`);
+
+    } catch (e) {
+        alert("拉取失败: " + e.message);
+    } finally {
+        box.classList.remove('fetching');
+    }
+};
+
+// 5. 渲染下拉列表
+async function renderModelList(models) {
+    const container = document.getElementById('model-list-container');
+    const currentText = document.getElementById('current-model-text').innerText;
+
+    // 排序
+    models.sort((a, b) => a.id.localeCompare(b.id));
+
+    let html = '';
+    if (models.length === 0) {
+        html = '<div class="model-option" style="color:#999">未找到模型</div>';
+    } else {
+        models.forEach(m => {
+            const isSelected = m.id === currentText;
+            html += `
+                <div class="model-option ${isSelected ? 'selected' : ''}" onclick="selectModel('${m.id}')">
+                    ${m.id}
+                </div>
+            `;
+        });
+    }
+
+    container.innerHTML = html;
+    container.classList.add('open'); // 展开列表
+}
+
+// 6. 选中模型
+window.selectModel = async function (modelId) {
+    // 1. 更新显示文字
+    const displayEl = document.getElementById('current-model-text');
+    displayEl.innerText = modelId;
+    displayEl.style.color = "#333";
+
+    // 2. 收起列表
+    const container = document.getElementById('model-list-container');
+    container.classList.remove('open');
+
+    // 3. 自动保存模型选择 (可选，既然有保存按钮，这里也可以只更新UI)
+    // 但为了体验好，建议选中即存这一项
+    // await window.dbSystem.settings.put({ key: 'apiModel', value: modelId });
+};
+
+// 切换列表显示/隐藏 (点击文字区域时)
+window.toggleModelList = function () {
+    const container = document.getElementById('model-list-container');
+    if (container.innerHTML.trim() === '') return; // 没内容不展开
+    container.classList.toggle('open');
+};

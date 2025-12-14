@@ -27,9 +27,108 @@
                     </div>
                     <span class="label">WeChat</span>
                 </div>
+                <div class="desktop-app-icon" onclick="openApp('settings')">
+                    <div class="icon-bg-desktop" style="background: #ffffff;">
+                        <svg viewBox="0 0 24 24" width="32" height="32" fill="#9B9ECE">
+                            <path
+                                d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z" />
+                        </svg>
+                    </div>
+                    <span class="label">设置</span>
+                </div>
             </div>
         </div>
+        <div id="app-settings" class="app-window" style="background: #F9F9FC;">
+            <div class="app-header">
+                <div style="height:calc(10px + env(safe-area-inset-top));"></div>
+                <div class="header-content">
+                    <div class="header-left" onclick="closeApp('settings')">
+                        <svg viewBox="0 0 24 24" width="28" height="28">
+                            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                        </svg>
 
+                    </div>
+                    <div class="header-title"><span style="font-size:17px;font-weight:600;">设置</span></div>
+                    <div class="header-right" style="width:40px;"></div>
+                </div>
+            </div>
+
+            <div class="app-body">
+                <div class="setting-group">
+                    <div class="setting-row" onclick="openSubPage('api')">
+                        <span class="setting-row-title">API 设置</span>
+                        <svg class="setting-row-arrow" viewBox="0 0 24 24">
+                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
+                        </svg>
+                    </div>
+                    <div class="setting-row">
+                        <span class="setting-row-title">通用</span>
+                        <svg class="setting-row-arrow" viewBox="0 0 24 24">
+                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
+                        </svg>
+                    </div>
+                </div>
+                <div style="padding:20px; text-align:center; color:#ccc; font-size:12px;">
+                    Version 1.0.0
+                </div>
+            </div>
+
+            <div id="sub-page-api" class="sub-page">
+                <div class="app-header">
+                    <div style="height:calc(10px + env(safe-area-inset-top));"></div>
+                    <div class="header-content">
+                        <div class="header-left" onclick="closeSubPage('api')" style="width: 40px; padding-left: 5px;">
+                            <svg viewBox="0 0 24 24" width="28" height="28">
+                                <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                            </svg>
+                        </div>
+                        <div class="header-title"><span style="font-size:17px;font-weight:600;">API 配置</span></div>
+                        <div class="header-right" style="width:40px;"></div>
+                    </div>
+                </div>
+
+                <div class="app-body" style="padding: 20px 16px;">
+                    <label class="setting-label">API 厂商</label>
+                    <div class="input-wrapper">
+                        <select id="api-provider" class="setting-input" style="background-image:none;"
+                            onchange="toggleApiProvider(this.value)">
+                            <option value="openai">OpenAI (GPT)</option>
+                            <option value="google">Google (Gemini)</option>
+                        </select>
+                    </div>
+                    <label class="setting-label">API Base URL (选填)</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="api-host" class="setting-input" placeholder="https://api.openai.com/v1">
+                    </div>
+
+                    <label class="setting-label">API Key (多Key请用英文逗号分隔)</label>
+                    <div class="input-wrapper">
+                        <input type="password" id="api-key" class="setting-input"
+                            placeholder="sk-aaa, sk-bbb, sk-ccc...">
+                    </div>
+
+                    <label class="setting-label">模型选择</label>
+                    <div class="model-selector-box">
+                        <div id="current-model-text" class="model-display" onclick="toggleModelList()">
+                            未选择模型
+                        </div>
+                        <div class="fetch-btn" onclick="fetchModels(event)">
+                            <svg id="fetch-icon" viewBox="0 0 24 24" width="20" height="20" fill="#9B9ECE">
+                                <path
+                                    d="M17.65 6.35C16.2 4.9 14.21 4 12 4c-4.42 0-7.99 3.58-7.99 8s3.57 8 7.99 8c3.73 0 6.84-2.55 7.73-6h-2.08c-.82 2.33-3.04 4-5.65 4-3.31 0-6-2.69-6-6s2.69-6 6-6c1.66 0 3.14.69 4.22 1.78L13 11h7V4l-2.35 2.35z" />
+                            </svg>
+                        </div>
+                    </div>
+
+                    <div id="model-list-container" class="model-dropdown"></div>
+
+                    <div style="margin-top: 30px;">
+                        <button class="btn-main" onclick="manualSaveApi()">保存配置</button>
+                    </div>
+
+                </div>
+            </div>
+        </div>
         <div id="app-chat" class="app-window">
             <div class="app-header">
                 <div style="height:calc(10px + env(safe-area-inset-top));"></div>
@@ -124,7 +223,14 @@
                             <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
                         </svg>
                     </div>
-                    <div class="header-title"><span id="chat-title-text">聊天</span></div>
+                    <div class="header-title conversation-header">
+                        <span id="chat-title-text">聊天</span>
+                        <!-- 新增状态栏 -->
+                        <div class="status-container">
+                            <span id="chat-status-dot" class="status-dot"></span>
+                            <span id="chat-status-text">离线</span>
+                        </div>
+                    </div>
                     <div class="header-right" style="width:40px;"></div>
                 </div>
             </div>

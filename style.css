@@ -621,3 +621,318 @@ textarea.input-style {
 * {
     -ms-overflow-style: none;
 }
+
+.conversation-header {
+    position: relative;
+    /* 关键：让内部的绝对定位以我为准 */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100%;
+    /* 占满头部高度 */
+    width: 100%;
+}
+
+/* 2. 名字：保持原样，不用动 */
+.conversation-header #chat-title-text {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--theme-text);
+    /* 此时名字会自然处于 Header 的正中心，就像状态栏不存在一样 */
+}
+
+/* 3. 状态栏：脱离文档流，悬浮在名字下方 */
+.status-container {
+    position: absolute;
+    /* 关键：不占位，悬浮 */
+
+    /* 定位逻辑：放在父容器垂直中心往下一点的位置 */
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, 14px);
+    /* -50%水平居中，14px是向下偏移量 */
+
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+    /* 防止文字换行 */
+    pointer-events: none;
+    /* 防止遮挡点击 */
+}
+
+/* --- 以下样式保持不变 --- */
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #D1D1D6;
+    transition: background-color 0.3s;
+}
+
+.status-dot.online {
+    background-color: #88BFA0;
+    box-shadow: 0 0 4px rgba(136, 191, 160, 0.4);
+}
+
+.status-container span:last-child {
+    font-size: 10px;
+    /* 字体小一点，更精致 */
+    color: #9B9ECE;
+    font-weight: 500;
+    opacity: 0.9;
+}
+
+/* --- 设置 App 专用样式 --- */
+
+/* 1. iOS 关键修复：防止点击输入框自动放大 */
+/* 必须保证 font-size >= 16px */
+.setting-input {
+    width: 100%;
+    height: 44px;
+    padding: 0 12px;
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 10px;
+    font-size: 16px;
+    /* 关键！小于16px会导致iOS Safari缩放 */
+    box-sizing: border-box;
+    color: var(--theme-text);
+    outline: none;
+    margin-bottom: 10px;
+    appearance: none;
+    /* 去除iOS默认圆角阴影 */
+}
+
+.setting-input:focus {
+    border-color: var(--theme-purple);
+}
+
+/* 设置列表容器 */
+.setting-group {
+    background: #fff;
+    margin: 16px;
+    border-radius: 16px;
+    overflow: hidden;
+    /* 圆角 */
+    box-shadow: var(--card-shadow);
+}
+
+.setting-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px;
+    border-bottom: 1px solid #f9f9f9;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.setting-row:last-child {
+    border-bottom: none;
+}
+
+.setting-row:active {
+    background: #f5f5f7;
+}
+
+.setting-row-title {
+    font-size: 16px;
+    color: #333;
+    font-weight: 500;
+}
+
+.setting-row-arrow {
+    width: 20px;
+    height: 20px;
+    fill: #ccc;
+}
+
+/* 内部页面切换机制 (Page Navigation) */
+.sub-page {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--theme-bg);
+    z-index: 50;
+    transform: translate3d(100%, 0, 0);
+    /* 默认藏在右边 */
+    transition: transform 0.3s cubic-bezier(0.32, 1, 0.23, 1);
+    display: flex;
+    flex-direction: column;
+}
+
+.sub-page.active {
+    transform: translate3d(0, 0, 0);
+    /* 滑入 */
+}
+
+/* 模型列表区域 */
+#model-list-container {
+    padding: 0 16px;
+    margin-top: 10px;
+}
+
+.model-item {
+    padding: 12px;
+    background: #fff;
+    border-radius: 10px;
+    margin-bottom: 8px;
+    font-size: 14px;
+    color: #555;
+    border: 1px solid transparent;
+    cursor: pointer;
+}
+
+.model-item.selected {
+    border-color: var(--theme-purple);
+    background: #F4F4FF;
+    color: var(--theme-purple);
+    font-weight: 600;
+}
+
+/* --- API 设置页专用样式 --- */
+
+.setting-label {
+    font-size: 13px;
+    color: #888;
+    margin-bottom: 6px;
+    margin-left: 4px;
+    /* 对齐输入框圆角 */
+    display: block;
+    font-weight: 500;
+}
+
+.input-wrapper {
+    margin-bottom: 16px;
+}
+
+/* 统一输入框样式 */
+.setting-input {
+    width: 100%;
+    height: 46px;
+    /* 稍微加高一点，手感更好 */
+    padding: 0 16px;
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 12px;
+    font-size: 16px;
+    /* 防止 iOS 缩放 */
+    color: var(--theme-text);
+    outline: none;
+    appearance: none;
+    transition: border-color 0.2s;
+}
+
+.setting-input:focus {
+    border-color: var(--theme-purple);
+}
+
+/* --- 模型选择器 (核心修改) --- */
+.model-selector-box {
+    display: flex;
+    align-items: center;
+    background: #fff;
+    border: 1px solid #eee;
+    border-radius: 12px;
+    height: 46px;
+    padding: 0 6px 0 16px;
+    /* 右边padding小一点是为了按钮 */
+    position: relative;
+    margin-bottom: 5px;
+    /* 和下拉列表的间距 */
+}
+
+.model-display {
+    flex-grow: 1;
+    font-size: 16px;
+    color: var(--theme-text);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 46px;
+}
+
+.fetch-btn {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    cursor: pointer;
+    background: #F4F4FF;
+    /* 淡紫色背景 */
+    margin-left: 8px;
+    transition: transform 0.2s;
+}
+
+.fetch-btn:active {
+    transform: scale(0.9);
+    background: #E0E0FF;
+}
+
+/* 旋转动画 (拉取时用) */
+@keyframes spin {
+    100% {
+        transform: rotate(360deg);
+    }
+}
+
+.fetching .fetch-btn svg {
+    animation: spin 1s linear infinite;
+    fill: var(--theme-purple);
+}
+
+/* --- 下拉列表 --- */
+.model-dropdown {
+    background: #fff;
+    border-radius: 12px;
+    overflow: hidden;
+    max-height: 0;
+    /* 默认折叠 */
+    transition: max-height 0.3s ease-out;
+    box-shadow: var(--card-shadow);
+}
+
+.model-dropdown.open {
+    max-height: 300px;
+    /* 展开高度 */
+    overflow-y: auto;
+    border: 1px solid #f0f0f0;
+    margin-bottom: 20px;
+}
+
+.model-option {
+    padding: 12px 16px;
+    font-size: 15px;
+    border-bottom: 1px solid #f9f9f9;
+    color: #444;
+}
+
+.model-option:last-child {
+    border-bottom: none;
+}
+
+.model-option:active {
+    background: #fafafa;
+}
+
+.model-option.selected {
+    color: var(--theme-purple);
+    font-weight: 600;
+    background: #F9F9FC;
+}
+
+select.setting-input {
+    background-color: #fff;
+    /* 你也可以加一个自定义的向下箭头背景图，这里简单处理用默认的 */
+    -webkit-appearance: none;
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ccc'%3e%3cpath d='M7 10l5 5 5-5z'/%3e%3c/svg%3e");
+    background-repeat: no-repeat;
+    background-position: right 10px center;
+    background-size: 24px;
+}

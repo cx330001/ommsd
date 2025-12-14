@@ -427,7 +427,7 @@ class ChatVirtualScroller {
 //  修改 openChatDetail：连接数据库 + 启动虚拟列表
 // -----------------------------------------------------
 window.openChatDetail = async function (chatId) {
-    currentActiveChatId = chatId; // 记住当前会话ID
+    currentActiveChatId = chatId;
 
     // 1. 获取会话信息
     const chats = await window.dbSystem.getChats();
@@ -437,7 +437,26 @@ window.openChatDetail = async function (chatId) {
     const contact = await window.dbSystem.contacts.get(chat.contactId);
     const me = await window.dbSystem.personas.get(chat.personaId);
 
+    // --- 修改开始：设置名字和状态 ---
+
+    // 1. 设置名字
     document.getElementById('chat-title-text').innerText = contact.name;
+
+    // 2. 设置状态 (这里模拟随机在线状态，你可以根据需要改)
+    // 假设 ID 是偶数就在线，奇数就离线 (或者直接写死 true)
+    const isOnline = Math.random() > 0.3; // 70% 概率在线
+    // const isOnline = true; // 如果想永远在线，就用这一行
+
+    const statusDot = document.getElementById('chat-status-dot');
+    const statusText = document.getElementById('chat-status-text');
+
+    if (isOnline) {
+        statusDot.classList.add('online');
+        statusText.innerText = "在线";
+    } else {
+        statusDot.classList.remove('online');
+        statusText.innerText = "离线"; // 或者显示 "15分钟前在线"
+    }
     window.openApp('conversation');
 
     // 2. 准备头像
@@ -576,7 +595,7 @@ window.renderChatUI = async function () {
             <div class="avatar" style="${style}">${img}</div>
             <div class="chat-info">
                 <h4>${contact.name}</h4>
-                <p>[使用身份: ${me.name}] ${chat.lastMsg || '暂无消息'}</p>
+                <p>${chat.lastMsg || '暂无消息'}</p>
             </div>
             <div class="chat-meta">刚刚</div>
         </div>`;
