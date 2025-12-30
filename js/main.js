@@ -43,12 +43,26 @@ window.closeApp = function (id) {
             }, 400);
         }
 
-        // [新增] 针对 'conversation' (聊天详情) 的清理
+        // [核心优化] 针对 'conversation' (聊天详情) 的清理
         if (id === 'conversation') {
             setTimeout(() => {
+                // 1. 销毁虚拟列表实例 (移除 scroll 监听，清空 JS 数组)
+                // 这一步最重要，释放 JS 内存
+                if (window.chatScroller) {
+                    window.chatScroller.destroy();
+                    window.chatScroller = null;
+                }
+
+                // 2. 清空 DOM (移除节点)
+                // 这一步释放渲染层内存
                 const body = document.getElementById('chat-body');
-                if (body) body.innerHTML = ''; // 清空聊天记录 DOM
-            }, 400);
+                if (body) body.innerHTML = '';
+
+                // 3. 释放当前的会话 ID
+                window.currentActiveChatId = null;
+
+                console.log("聊天界面资源已彻底释放");
+            }, 400); // 等 400ms 是为了让滑出动画播完，避免视觉闪烁
         }
     }
 };

@@ -547,12 +547,30 @@ window.openChatDetail = async function (chatId) {
         chatScroller = null;
     }
 
-    // 传入 avatarMap 和 当前用户的ID (用于判断左右)
+    // === 【核心修复】确定在这个聊天窗口里，“我”是谁 ===
+    // 我们不能直接用 currentUser.id，因为全局身份可能已经切走了。
+    // 我们必须在这个聊天室的成员里，找到那个属于“我” (type=1) 的 ID。
+    let myIdentityIdInChat = null;
+
+    for (const memberId of chat.members) {
+        const char = await window.dbSystem.getChar(memberId);
+        if (char && char.type === 1) {
+            myIdentityIdInChat = char.id;
+            break; // 找到了！在这个群里，我是这个人。
+        }
+    }
+
+    // 如果没找到（比如全是NPC的特殊情况），再兜底用全局身份
+    if (!myIdentityIdInChat && currentUser) {
+        myIdentityIdInChat = currentUser.id;
+    }
+
+    // 传入 myIdentityIdInChat 而不是 currentUser.id
     chatScroller = new ChatVirtualScroller(
         'chat-body',
         messages,
         avatarMap,
-        currentUser ? currentUser.id : null
+        myIdentityIdInChat // <--- 这里传的是“这个群里的我”
     );
 
     // 6. 绑定回车键
