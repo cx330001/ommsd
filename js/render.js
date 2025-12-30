@@ -360,31 +360,36 @@ class ChatVirtualScroller {
         visibleData.forEach((msg, i) => {
             const realIndex = start + i;
 
-            // --- 核心修改开始 ---
-
-            // 判断左右：发送者是否是当前用户
-            // 如果 currentUserId 为空(未登录)，或者不匹配，都显示在左边
+            // 1. 判断左右
             const isRight = (this.currentUserId && msg.senderId === this.currentUserId);
             const rowClass = isRight ? 'msg-row me' : 'msg-row';
 
-            // 获取头像：从 Map 中查找，找不到用默认灰色
-            const avatarStyle = this.avatarMap[msg.senderId] || 'background:#ccc';
+            // 2. 获取头像样式
+            let avatarStyle = this.avatarMap[msg.senderId] || 'background:#ccc';
 
-            // --- 核心修改结束 ---
+            // === 【修改点 1：隐藏导演/系统的丑头像】 ===
+            // 如果 senderId 是 -1 (系统消息/Loading)，让头像透明（占位但不显示）
+            if (msg.senderId === -1) {
+                avatarStyle = "background: transparent; box-shadow: none;";
+            }
+            // =======================================
 
-            // 转义处理
+            // 3. 转义与特殊内容处理
             let contentHtml = this.escapeHtml(msg.text);
-            if (msg.text && msg.text.includes('typing-dots')) {
+
+            // === 【修改点 2：允许显示正在输入的动画气泡】 ===
+            // 只要包含 typing-bubble 或 typing-dots 就不转义
+            if (msg.text && (msg.text.includes('typing-dots') || msg.text.includes('typing-bubble'))) {
                 contentHtml = msg.text;
             }
 
             html += `
-            <div class="virtual-item" data-index="${realIndex}">
-                <div class="${rowClass}">
-                    <div class="avatar" style="${avatarStyle}"></div>
-                    <div class="msg-bubble">${contentHtml}</div>
-                </div>
-            </div>`;
+    <div class="virtual-item" data-index="${realIndex}">
+        <div class="${rowClass}">
+            <div class="avatar" style="${avatarStyle}"></div>
+            <div class="msg-bubble">${contentHtml}</div>
+        </div>
+    </div>`;
         });
 
         this.content.innerHTML = html;
@@ -452,34 +457,58 @@ window.openChatDetail = async function (chatId) {
     currentActiveChatId = chatId;
     window.currentActiveChatId = chatId;
 
-    // 1. 获取会话和当前用户
+    // 1. 获取会话
     const currentUser = await window.dbSystem.getCurrent();
     const chats = await window.dbSystem.getChats();
     const chat = chats.find(c => c.id === chatId);
     if (!chat) return;
 
-    // 2. 确定聊天标题 (对方的名字)
-    // 逻辑：在 members 里找一个“不是我”的人。如果都是我，或者都没找到，默认取第一个。
-    let targetId = chat.members.find(id => id !== currentUser?.id);
-    if (!targetId) targetId = chat.members[0];
+    // === 【核心修复】标题显示逻辑 (与列表逻辑保持一致) ===
+    const titleEl = document.getElementById('chat-title-text');
+    const statusContainer = document.querySelector('.status-container'); // 获取状态栏
 
-    const targetChar = await window.dbSystem.getChar(targetId);
-    if (targetChar) {
-        document.getElementById('chat-title-text').innerText = targetChar.name;
+    if (chat.name) {
+        // --- 群聊 ---
+        titleEl.innerText = chat.name + ` (${chat.members.length}人)`;
+        // 群聊隐藏状态栏
+        if (statusContainer) statusContainer.style.display = 'none';
     } else {
-        document.getElementById('chat-title-text').innerText = "未知用户";
-    }
+        // --- 私聊 (修复点) ---
 
-    // 设置在线状态 (模拟)
-    const isOnline = Math.random() > 0.3;
-    const statusDot = document.getElementById('chat-status-dot');
-    const statusText = document.getElementById('chat-status-text');
-    if (isOnline) {
-        statusDot.classList.add('online');
-        statusText.innerText = "在线";
-    } else {
-        statusDot.classList.remove('online');
-        statusText.innerText = "离线";
+        let targetId = null;
+
+        // 1. 【优先】找 Type=0 (AI/NPC)
+        // 这样不管我当前切成了哪个身份，进这个窗口看到的永远是“小助手”
+        for (const mid of chat.members) {
+            const c = await window.dbSystem.getChar(mid);
+            if (c && c.type === 0) {
+                targetId = mid;
+                break;
+            }
+        }
+
+        // 2. 【兜底】如果没找到 AI (比如是 UserA 和 UserB 互聊)
+        // 就默认取第一个成员，保证视图稳定，不随 currentUser 变化而乱跳
+        if (!targetId) targetId = chat.members[0];
+
+        const targetChar = await window.dbSystem.getChar(targetId);
+        titleEl.innerText = targetChar ? targetChar.name : "未知用户";
+
+        // 私聊显示状态栏
+        if (statusContainer) {
+            statusContainer.style.display = 'flex';
+            // 随机模拟状态
+            const isOnline = Math.random() > 0.3;
+            const statusDot = document.getElementById('chat-status-dot');
+            const statusText = document.getElementById('chat-status-text');
+            if (isOnline) {
+                statusDot.classList.add('online');
+                statusText.innerText = "在线";
+            } else {
+                statusDot.classList.remove('online');
+                statusText.innerText = "离线";
+            }
+        }
     }
 
     window.openApp('conversation');
@@ -585,18 +614,20 @@ window.renderChatUI = async function () {
             }
 
             container.innerHTML = `
-                <div class="me-card">
-                    <div class="me-avatar" style="${avatarStyle}" onclick="openModal()">${avatarText}</div>
-                    <div class="chat-info" onclick="openModal()" style="flex-grow:1;">
-                        <h3 style="margin:0;color:#333;">${currentUser.name}</h3> <p style="margin:4px 0 0 0;color:#999;font-size:12px;">${currentUser.desc || '点击切换/管理身份'}</p> </div>
-                    <div style="padding:10px; cursor:pointer;" onclick="editCurrentPersona()">
-                        <svg viewBox="0 0 24 24" width="20" height="20" fill="#9B9ECE">
-                            <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
-                        </svg>
-                    </div>
-                </div>
-                <div class="menu-item"><div class="chat-info"><h4>通用设置</h4></div></div>
-            `;
+    <div class="me-card">
+        <div class="me-avatar" style="${avatarStyle}" onclick="openPersonaManager()">${avatarText}</div>
+        <div class="chat-info" onclick="openPersonaManager()" style="flex-grow:1;">
+            <h3 style="margin:0;color:#333;">${currentUser.name}</h3> 
+            <p style="margin:4px 0 0 0;color:#999;font-size:12px;">${currentUser.desc || '点击切换/管理身份'}</p> 
+        </div>
+        <div style="padding:10px; cursor:pointer;" onclick="editCurrentPersona()">
+            <svg viewBox="0 0 24 24" width="20" height="20" fill="#9B9ECE">
+                <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
+            </svg>
+        </div>
+    </div>
+    <div class="menu-item"><div class="chat-info"><h4>通用设置</h4></div></div>
+`;
         } else {
             // 2. [修复空白] 如果没有选中身份，显示创建按钮
             container.innerHTML = `
@@ -626,52 +657,63 @@ window.renderChatUI = async function () {
 
     // 遍历会话并显示
     for (const chat of chats) {
-        // 逻辑更新：
-        // 以前是找 contactId，现在 chat.members 是一个数组 [id1, id2]
-        // 我们需要找到 "不是我" 的那个 ID 来展示头像
-        let targetId = chat.members.find(id => id !== currentUser?.id);
-        if (!targetId) targetId = chat.members[0]; // 防御性
+        let title = "未知会话";
+        let avatarStyle = "background:#E8C1C6"; // 默认粉色
+        let avatarContent = "";
 
-        const targetChar = await window.dbSystem.getChar(targetId);
-        if (!targetChar) continue;
+        if (chat.name) {
+            // === 群聊逻辑 (保持不变) ===
+            title = chat.name + ` (${chat.members.length}人)`;
+            avatarContent = "群";
+            avatarStyle = "background:#9B9ECE; display:flex; align-items:center; justify-content:center; color:#fff; font-size:14px;";
+        } else {
+            // === 私聊逻辑 (稳定版) ===
+            // 目标：不管我是谁，列表里永远显示“对方”
 
-        // 渲染头像
-        let img = targetChar.name[0];
-        let style = "background:#E8C1C6"; // 默认莫兰迪粉
+            let targetId = null;
 
-        // =========== ❌ 错误代码 ===========
-        /*
-        if (contact.avatar instanceof Blob) {
-            const u = URL.createObjectURL(contact.avatar);
-            activeUrls.push(u);
-            img = "";
-            style = `background-image:url(${u})`;
-        } else if (typeof contact.avatar === 'string' && contact.avatar) {
-            img = "";
-            style = `background-image:url(${contact.avatar})`;
+            // 1. 优先找 Type=0 (AI/NPC)
+            for (const mid of chat.members) {
+                const c = await window.dbSystem.getChar(mid);
+                if (c && c.type === 0) {
+                    targetId = mid;
+                    break;
+                }
+            }
+
+            // 2. 如果没找到 AI (比如是两个用户互聊)，就默认取第一个成员
+            // 只要逻辑固定，列表就不会乱跳
+            if (!targetId) targetId = chat.members[0];
+
+            const targetChar = await window.dbSystem.getChar(targetId);
+            if (!targetChar) continue;
+
+            title = targetChar.name;
+
+            // 头像处理 (保持之前的代码)
+            if (targetChar.avatar instanceof Blob) {
+                const u = URL.createObjectURL(targetChar.avatar);
+                if (window.activeUrls) window.activeUrls.push(u);
+                avatarContent = "";
+                avatarStyle = `background-image:url(${u})`;
+            } else if (typeof targetChar.avatar === 'string' && targetChar.avatar) {
+                avatarContent = "";
+                avatarStyle = `background-image:url(${targetChar.avatar})`;
+            } else {
+                avatarContent = targetChar.name[0];
+                avatarStyle = "background:#E8C1C6";
+            }
         }
-        */
-
-        // =========== ✅ 修正代码 (把 contact 改为 targetChar) ===========
-        if (targetChar.avatar instanceof Blob) {
-            const u = URL.createObjectURL(targetChar.avatar);
-            if (window.activeUrls) window.activeUrls.push(u); // 建议加上 window. 前缀以防万一
-            img = "";
-            style = `background-image:url(${u})`;
-        } else if (typeof targetChar.avatar === 'string' && targetChar.avatar) {
-            img = "";
-            style = `background-image:url(${targetChar.avatar})`;
-        }
-        // ============================================================
+        // === 新增逻辑结束 ===
 
         const html = `
-        <div class="chat-item" onclick="openChatDetail(${chat.id})">
-            <div class="avatar" style="${style}">${img}</div>
-            <div class="chat-info">
-                <h4>${targetChar.name}</h4>
-                <p>${chat.lastMsg || '暂无消息'}</p>
-            </div>
-        </div>`;
+    <div class="chat-item" onclick="openChatDetail(${chat.id})">
+        <div class="avatar" style="${avatarStyle}">${avatarContent}</div>
+        <div class="chat-info">
+            <h4>${title}</h4>
+            <p>${chat.lastMsg || '暂无消息'}</p>
+        </div>
+    </div>`;
         list.insertAdjacentHTML('beforeend', html);
     }
 };

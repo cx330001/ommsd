@@ -148,7 +148,7 @@
                     </div>
                     <div class="header-title"><span id="app-title-text">消息</span></div>
 
-                    <div id="btn-add-contact" class="header-right" onclick="openContactModal()" style="display:none;">
+                    <div id="btn-add-contact" class="header-right" onclick="openContactPage()" style="display:none;">
                         <svg viewBox="0 0 24 24" width="26" height="26" fill="#9B9ECE">
                             <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
                         </svg>
@@ -162,6 +162,23 @@
                 </div>
 
                 <div id="tab-contacts" class="tab-content">
+
+                    <div class="menu-item" onclick="openGroupCreateUI()"
+                        style="margin: 16px 16px 10px 16px; height: 70px; box-sizing: border-box;">
+                        <div class="avatar"
+                            style="width:40px; height:40px; background:#9B9ECE; display:flex; align-items:center; justify-content:center;">
+                            <svg viewBox="0 0 24 24" width="24" height="24" fill="white">
+                                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+                            </svg>
+                        </div>
+                        <div class="chat-info">
+                            <h4 style="margin:0;">发起群聊</h4>
+                            <p style="margin:0; font-size:12px; color:#999;">创建一个新的多人会话</p>
+                        </div>
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="#ccc">
+                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
+                        </svg>
+                    </div>
                     <div id="contact-list-dynamic"></div>
                 </div>
 
@@ -270,59 +287,115 @@
             </div>
         </div>
 
-        <div id="modal-persona" class="modal-overlay">
-            <div class="modal-card">
-                <div class="close-modal" onclick="closeModal()">×</div>
-                <h3 style="margin-top:0;">切换身份</h3>
+        <div id="app-persona-mgr" class="app-window" style="background: #F9F9FC;">
+            <div class="app-header">
+                <div style="height:calc(10px + env(safe-area-inset-top));"></div>
+                <div class="header-content">
+                    <div class="header-left" onclick="handlePersonaBack()">
+                        <svg viewBox="0 0 24 24" width="28" height="28">
+                            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                        </svg>
+                    </div>
+                    <div class="header-title"><span id="persona-page-title"
+                            style="font-size:17px;font-weight:600;">我的身份</span></div>
+                    <div id="btn-add-persona" class="header-right" onclick="showPersonaForm()">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="#9B9ECE">
+                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+                        </svg>
+                    </div>
+                </div>
+            </div>
 
-                <div id="persona-list-view">
-                    <div id="persona-list" style="max-height:200px; overflow-y:auto;"></div>
-                    <button class="btn-main" onclick="showAddForm()">+ 新建身份</button>
+            <div class="app-body" style="padding: 20px 16px;">
+
+                <div id="view-persona-list">
+                    <p style="font-size:12px;color:#999;margin-bottom:15px;text-align:center;">点击卡片切换当前使用的身份</p>
+                    <div id="persona-list-container">
+                    </div>
                 </div>
 
-                <div id="persona-add-view" style="display:none;">
-                    <div style="text-align:center; margin-bottom:15px;">
+                <div id="view-persona-form" style="display:none;">
+                    <div style="text-align:center; margin-bottom:25px;">
                         <div class="avatar-tabs">
                             <div class="avatar-tab active" id="tab-file" onclick="toggleAvatarMode('file')">本地上传</div>
                             <div class="avatar-tab" id="tab-url" onclick="toggleAvatarMode('url')">URL链接</div>
                         </div>
+
                         <div id="input-group-file" class="avatar-upload"
                             onclick="document.getElementById('file-input').click()"
-                            style="width:70px;height:70px;background:#f0f0f0;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;border:2px dashed #ccc;">
+                            style="width:80px;height:80px;background:#fff;border-radius:20px;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #eee;box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
                             <img id="preview-file" src="" style="width:100%;height:100%;object-fit:cover;display:none;">
-                            <span id="ph-file" style="font-size:10px;color:#999;">点击上传</span>
+                            <span id="ph-file"
+                                style="font-size:12px;color:#999;display:flex;flex-direction:column;align-items:center;">
+                                <svg viewBox="0 0 24 24" width="20" height="20" fill="#ccc" style="margin-bottom:4px;">
+                                    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+                                </svg>
+                                上传
+                            </span>
                         </div>
                         <input type="file" id="file-input" hidden accept="image/*" onchange="handleFile(this)">
 
-                        <div id="input-group-url" style="display:none;">
-                            <input type="text" id="url-input" class="input-style" placeholder="粘贴图片链接..."
+                        <div id="input-group-url" style="display:none; margin-top:10px;">
+                            <input type="text" id="url-input" class="setting-input" placeholder="粘贴图片链接..."
                                 oninput="handleUrl(this)">
                             <div
-                                style="width:70px;height:70px;background:#f0f0f0;border-radius:50%;margin:10px auto;overflow:hidden;">
+                                style="width:80px;height:80px;background:#fff;border-radius:20px;margin:15px auto 0;overflow:hidden;border:1px solid #eee;">
                                 <img id="preview-url" src=""
                                     style="width:100%;height:100%;object-fit:cover;display:none;">
                             </div>
                         </div>
                     </div>
 
-                    <div class="form-group">
-                        <input type="text" id="inp-name" class="input-style" placeholder="姓名">
-
-                        <textarea id="inp-desc" class="input-style" placeholder="写点什么人设描述吧..."></textarea>
+                    <label class="setting-label">姓名</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="inp-name" class="setting-input" placeholder="你的名字">
                     </div>
 
-                    <button class="btn-main" onclick="savePersona()">保存</button>
-                    <button class="btn-sec" onclick="hideAddForm()">返回</button>
+                    <label class="setting-label">人设描述</label>
+                    <div class="input-wrapper">
+                        <textarea id="inp-desc" class="setting-input"
+                            style="height:120px; padding-top:12px; line-height:1.5;"
+                            placeholder="写点什么人设描述吧..."></textarea>
+                    </div>
+
+                    <label class="setting-label">人际关系网</label>
+                    <div id="me-relation-container" class="relation-list"
+                        style="background:#fff; border:1px solid #eee;">
+                        <div class="btn-add-relation" onclick="openRelationSelector('me')">+</div>
+                    </div>
+
+                    <div style="height:40px;"></div>
+                    <button class="btn-main" onclick="savePersona()"
+                        style="box-shadow: 0 5px 15px rgba(155, 158, 206, 0.4);">保存身份</button>
+                    <div style="height:30px;"></div>
                 </div>
             </div>
         </div>
     </div>
-    <div id="modal-add-friend" class="modal-overlay">
-        <div class="modal-card">
-            <div class="close-modal" onclick="closeContactModal()">×</div>
-            <h3 style="margin-top:0;">添加好友</h3>
+    <div id="btn-add-contact" class="header-right" onclick="openContactPage()" style="display:none;">
+        <svg viewBox="0 0 24 24" width="26" height="26" fill="#9B9ECE">
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+        </svg>
+    </div>
 
-            <div style="text-align:center; margin-bottom:15px;">
+    <div id="app-contact-edit" class="app-window" style="background: #F9F9FC;">
+        <div class="app-header">
+            <div style="height:calc(10px + env(safe-area-inset-top));"></div>
+            <div class="header-content">
+                <div class="header-left" onclick="closeContactPage()">
+                    <svg viewBox="0 0 24 24" width="28" height="28">
+                        <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                    </svg>
+                </div>
+                <div class="header-title"><span id="contact-page-title"
+                        style="font-size:17px;font-weight:600;">添加好友</span></div>
+                <div class="header-right" style="width:40px;"></div>
+            </div>
+        </div>
+
+        <div class="app-body" style="padding: 20px 16px;">
+
+            <div style="text-align:center; margin-bottom:25px;">
                 <div class="avatar-tabs">
                     <div class="avatar-tab active" id="tab-c-file" onclick="toggleContactMode('file')">本地上传</div>
                     <div class="avatar-tab" id="tab-c-url" onclick="toggleContactMode('url')">URL链接</div>
@@ -330,29 +403,100 @@
 
                 <div id="c-input-group-file" class="avatar-upload"
                     onclick="document.getElementById('c-file-input').click()"
-                    style="width:70px;height:70px;background:#f0f0f0;border-radius:50%;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;border:2px dashed #ccc;">
+                    style="width:80px;height:80px;background:#fff;border-radius:20px;margin:0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;border:1px solid #eee;box-shadow: 0 4px 10px rgba(0,0,0,0.05);">
                     <img id="c-preview-file" src="" style="width:100%;height:100%;object-fit:cover;display:none;">
-                    <span id="c-ph-file" style="font-size:10px;color:#999;">点击上传</span>
+                    <span id="c-ph-file"
+                        style="font-size:12px;color:#999;display:flex;flex-direction:column;align-items:center;">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="#ccc" style="margin-bottom:4px;">
+                            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+                        </svg>
+                        上传
+                    </span>
                 </div>
                 <input type="file" id="c-file-input" hidden accept="image/*" onchange="handleContactFile(this)">
 
-                <div id="c-input-group-url" style="display:none;">
-                    <input type="text" id="c-url-input" class="input-style" placeholder="粘贴图片链接..."
+                <div id="c-input-group-url" style="display:none; margin-top:10px;">
+                    <input type="text" id="c-url-input" class="setting-input" placeholder="粘贴图片链接..."
                         oninput="handleContactUrl(this)">
                     <div
-                        style="width:70px;height:70px;background:#f0f0f0;border-radius:50%;margin:10px auto;overflow:hidden;">
+                        style="width:80px;height:80px;background:#fff;border-radius:20px;margin:15px auto 0;overflow:hidden;border:1px solid #eee;">
                         <img id="c-preview-url" src="" style="width:100%;height:100%;object-fit:cover;display:none;">
                     </div>
                 </div>
             </div>
 
-            <div class="form-group">
-                <input type="text" id="c-inp-name" class="input-style" placeholder="好友姓名">
-
-                <textarea id="c-inp-desc" class="input-style" placeholder="备注或描述..."></textarea>
+            <label class="setting-label">姓名 / 昵称</label>
+            <div class="input-wrapper">
+                <input type="text" id="c-inp-name" class="setting-input" placeholder="给TA起个名字">
             </div>
 
-            <button class="btn-main" onclick="saveContact()">确认添加</button>
+            <label class="setting-label">人设描述 / 备注</label>
+            <div class="input-wrapper">
+                <textarea id="c-inp-desc" class="setting-input" style="height:120px; padding-top:12px; line-height:1.5;"
+                    placeholder="输入详细的人设描述、性格特征或备注信息..."></textarea>
+            </div>
+
+            <label class="setting-label">人际关系网</label>
+            <div id="contact-relation-container" class="relation-list" style="background:#fff; border:1px solid #eee;">
+                <div class="btn-add-relation" onclick="openRelationSelector('contact')">+</div>
+            </div>
+
+            <div style="height:40px;"></div> <button class="btn-main" onclick="saveContact()"
+                style="box-shadow: 0 5px 15px rgba(155, 158, 206, 0.4);">保存资料</button>
+            <div style="height:30px;"></div>
+        </div>
+    </div>
+    <div id="app-group-create" class="app-window" style="background: #F9F9FC;">
+        <div class="app-header">
+            <div style="height:calc(10px + env(safe-area-inset-top));"></div>
+            <div class="header-content">
+                <div class="header-left" onclick="closeApp('group-create')">
+                    <span style="font-size:16px;color:#666;">取消</span>
+                </div>
+                <div class="header-title"><span style="font-size:17px;font-weight:600;">发起群聊</span></div>
+                <div class="header-right" onclick="submitCreateGroup()">
+                    <span style="font-size:16px;color:var(--theme-purple);font-weight:600;">完成</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="app-body" style="padding: 20px 16px;">
+
+            <label class="setting-label">群聊名称</label>
+            <div class="input-wrapper">
+                <input type="text" id="group-name-input" class="setting-input" placeholder="例如：异世界冒险小队">
+            </div>
+
+            <label class="setting-label">选择你的身份 (我是谁)</label>
+            <div id="group-me-list" class="select-list-container">
+            </div>
+
+            <label class="setting-label" style="margin-top:20px;">选择群成员 (邀请谁)</label>
+            <div id="group-contact-list" class="select-list-container">
+            </div>
+
+            <div style="height:50px;"></div>
+        </div>
+    </div>
+    <div id="modal-relation-select" class="modal-overlay" style="z-index: 210;">
+        <div class="modal-card">
+            <div class="close-modal" onclick="document.getElementById('modal-relation-select').style.display='none'">×
+            </div>
+            <h3 style="margin-top:0;">添加关系</h3>
+
+            <p style="font-size:12px;color:#999;margin-bottom:10px;">选择一个对象，并定义关系 (如: 父亲, 宿敌, 暗恋对象)</p>
+
+            <label class="setting-label">关联对象</label>
+            <div class="input-wrapper">
+                <select id="rel-target-select" class="setting-input" style="background-image:none;"></select>
+            </div>
+
+            <label class="setting-label">关系描述</label>
+            <div class="input-wrapper">
+                <input type="text" id="rel-desc-input" class="setting-input" placeholder="例如：前男友、合伙人...">
+            </div>
+
+            <button class="btn-main" onclick="confirmAddRelation()">确定添加</button>
         </div>
     </div>
     <script src="https://unpkg.com/dexie/dist/dexie.js"></script>
