@@ -116,33 +116,42 @@ let avatarMode = 'file';
 let currentEditingId = null; // 标记是否在编辑个人资料
 
 window.openModal = async function () {
-    // 默认打开列表视图
     document.getElementById('modal-persona').style.display = 'flex';
     document.getElementById('persona-list-view').style.display = 'block';
     document.getElementById('persona-add-view').style.display = 'none';
 
-    // 渲染列表
-    const list = await window.dbSystem.getAll();
+    // 关键修改：使用 getMyPersonas() 获取所有 type=1 的角色
+    const list = await window.dbSystem.getMyPersonas();
     const curr = await window.dbSystem.getCurrent();
 
-    document.getElementById('persona-list').innerHTML = list.map(p => {
-        let img = p.name[0];
-        let style = "";
-        if (p.avatar instanceof Blob) {
-            const u = URL.createObjectURL(p.avatar);
-            img = ""; style = `background-image:url(${u});`;
-        } else if (typeof p.avatar === 'string' && p.avatar) {
-            img = ""; style = `background-image:url(${p.avatar});`;
-        }
-        return `
-        <div class="persona-item ${curr && curr.id === p.id ? 'active' : ''}" onclick="switchPersona(${p.id})">
-            <div class="avatar" style="width:40px;height:40px;margin-right:10px;font-size:14px;${style}">${img}</div>
-            <div>
-                <div style="font-weight:bold;font-size:14px;">${p.name}</div>
-                <div style="font-size:12px;color:#999;">ID: ${p.userId}</div>
-            </div>
-        </div>`;
-    }).join('');
+    // 渲染列表
+    const listContainer = document.getElementById('persona-list');
+    if (list.length === 0) {
+        listContainer.innerHTML = '<div style="padding:20px;text-align:center;color:#999">暂无身份，请新建</div>';
+    } else {
+        listContainer.innerHTML = list.map(p => {
+            let img = p.name[0];
+            let style = "background:#9B9ECE"; // 默认紫色
+
+            if (p.avatar instanceof Blob) {
+                const u = URL.createObjectURL(p.avatar);
+                img = ""; style = `background-image:url(${u});`;
+            } else if (typeof p.avatar === 'string' && p.avatar) {
+                img = ""; style = `background-image:url(${p.avatar});`;
+            }
+
+            const activeClass = (curr && curr.id === p.id) ? 'active' : '';
+
+            return `
+            <div class="persona-item ${activeClass}" onclick="switchPersona(${p.id})">
+                <div class="avatar" style="width:40px;height:40px;margin-right:10px;font-size:14px;${style}">${img}</div>
+                <div>
+                    <div style="font-weight:bold;font-size:14px;">${p.name}</div>
+                    <div style="font-size:12px;color:#999;">${p.desc || '无描述'}</div>
+                </div>
+            </div>`;
+        }).join('');
+    }
 };
 
 window.closeModal = function () {
@@ -152,7 +161,7 @@ window.closeModal = function () {
 window.switchPersona = async function (id) {
     await window.dbSystem.setCurrent(id);
     window.closeModal();
-    window.renderChatUI();
+    window.renderChatUI(); // 刷新界面
 };
 
 // 点击“新建身份”
@@ -172,18 +181,20 @@ window.hideAddForm = function () {
 // 点击“编辑当前身份” (那个紫色小铅笔)
 window.editCurrentPersona = async function () {
     const user = await window.dbSystem.getCurrent();
-    if (!user) return;
-    currentEditingId = user.id;
+    if (!user) return alert("请先新建或选择一个身份");
+
+    currentEditingId = user.id; // 标记正在编辑 ID
 
     document.getElementById('modal-persona').style.display = 'flex';
     document.getElementById('persona-list-view').style.display = 'none';
     document.getElementById('persona-add-view').style.display = 'block';
     document.querySelector('#modal-persona h3').innerText = "编辑资料";
 
+    // 填充表单
     document.getElementById('inp-name').value = user.name;
-    document.getElementById('inp-id').value = user.userId;
     document.getElementById('inp-desc').value = user.desc || '';
 
+    // 处理头像回显
     tempAvatar = user.avatar;
     if (user.avatar instanceof Blob) {
         window.toggleAvatarMode('file');
@@ -196,30 +207,41 @@ window.editCurrentPersona = async function () {
         document.getElementById('url-input').value = user.avatar;
         document.getElementById('preview-url').src = user.avatar;
         document.getElementById('preview-url').style.display = 'block';
+    } else {
+        resetForm(); // 如果没头像，重置一下显示状态
+        document.getElementById('inp-name').value = user.name; // 重置会被清空，重新填回去
+        document.getElementById('inp-desc').value = user.desc || '';
     }
 };
 
 window.savePersona = async function () {
     const name = document.getElementById('inp-name').value;
-    const id = document.getElementById('inp-id').value;
     const desc = document.getElementById('inp-desc').value;
 
-    if (!name || !id) return alert('昵称和ID必填哦');
+    if (!name) return alert('姓名必填哦');
 
+    // 关键修改：调用 addChar / updateChar，并指定 type=1 (代表用户)
     if (currentEditingId) {
-        await window.dbSystem.update(currentEditingId, name, id, desc, tempAvatar);
-        await window.renderChatUI();
+        await window.dbSystem.updateChar(currentEditingId, name, desc, tempAvatar);
     } else {
-        await window.dbSystem.add(name, id, desc, tempAvatar);
+        // 最后一个参数 1 表示这是“我” (User Type)
+        await window.dbSystem.addChar(name, desc, tempAvatar, 1);
     }
-    // 保存后回到列表，或者关闭
-    if (currentEditingId) window.closeModal();
-    else window.openModal();
+
+    // 保存后逻辑
+    if (currentEditingId) {
+        // 如果是编辑当前正在用的身份，记得刷新UI
+        window.closeModal();
+        window.renderChatUI();
+    } else {
+        // 如果是新建，回到列表页
+        window.openModal();
+    }
 };
 
 function resetForm() {
     document.getElementById('inp-name').value = '';
-    document.getElementById('inp-id').value = '';
+
     document.getElementById('inp-desc').value = '';
     document.getElementById('file-input').value = '';
     document.getElementById('url-input').value = '';
@@ -284,7 +306,7 @@ window.editContact = async function (id) {
     if (titleEl) titleEl.innerText = "编辑好友资料";
 
     document.getElementById('c-inp-name').value = contact.name;
-    document.getElementById('c-inp-id').value = contact.userId;
+
     document.getElementById('c-inp-desc').value = contact.desc || '';
 
     tempContactAvatar = contact.avatar;
@@ -309,15 +331,15 @@ window.closeContactModal = function () {
 
 window.saveContact = async function () {
     const name = document.getElementById('c-inp-name').value;
-    const id = document.getElementById('c-inp-id').value;
+
     const desc = document.getElementById('c-inp-desc').value;
 
-    if (!name) return alert('请填写好友昵称');
+    if (!name) return alert('请填写好友姓名');
 
     if (currentContactEditId) {
-        await window.dbSystem.updateContact(currentContactEditId, name, id, desc, tempContactAvatar);
+        await window.dbSystem.updateContact(currentContactEditId, name, desc, tempContactAvatar);
     } else {
-        await window.dbSystem.addContact(name, id, desc, tempContactAvatar);
+        await window.dbSystem.addContact(name, desc, tempContactAvatar);
     }
 
     window.closeContactModal();
@@ -326,7 +348,7 @@ window.saveContact = async function () {
 
 function resetContactForm() {
     document.getElementById('c-inp-name').value = '';
-    document.getElementById('c-inp-id').value = '';
+
     document.getElementById('c-inp-desc').value = '';
     document.getElementById('c-file-input').value = '';
     document.getElementById('c-url-input').value = '';
@@ -366,31 +388,30 @@ window.sendMessage = async function () {
     const input = document.querySelector('.chat-input');
     const text = input.value.trim();
     if (!text) return;
-
     if (!currentActiveChatId || !chatScroller) return;
 
-    // 1. 保存到数据库
-    // addMessage(chatId, text, isMe, type)
-    await window.dbSystem.addMessage(currentActiveChatId, text, true, 'text');
+    // 获取当前选中的用户身份 ID
+    const currentUser = await window.dbSystem.getCurrent();
+    if (!currentUser) return alert("未选择当前身份");
 
-    // 2. 构造消息对象 (格式必须和数据库读出来的一样)
+    // 1. 保存到数据库 (使用 senderId)
+    await window.dbSystem.addMessage(currentActiveChatId, text, currentUser.id, 'text');
+
+    // 2. 构造消息对象 (UI渲染用)
     const newMsg = {
         chatId: currentActiveChatId,
         text: text,
-        isMe: 1, // 必须是数字1，对应上面 render.js 的判断
+        senderId: currentUser.id, // 关键
         time: new Date()
     };
 
-    // 3. 告诉虚拟列表追加数据
     chatScroller.append(newMsg);
 
-    // 4. 更新会话列表的“最后一条消息”
     await window.dbSystem.chats.update(currentActiveChatId, {
         lastMsg: text,
         updated: new Date()
     });
 
-    // 5. 清空输入框
     input.value = '';
 };
 
@@ -476,7 +497,18 @@ async function loadApiSettings() {
     const keyRec = await window.dbSystem.settings.get('apiKey');
     const modelRec = await window.dbSystem.settings.get('apiModel');
     const providerRec = await window.dbSystem.settings.get('apiProvider'); // 获取保存的厂商
+    const tempRec = await window.dbSystem.settings.get('apiTemperature');
+    const tempSlider = document.getElementById('api-temp');
+    const tempDisplay = document.getElementById('temp-display');
 
+    if (tempRec) {
+        tempSlider.value = tempRec.value;
+        tempDisplay.innerText = tempRec.value;
+    } else {
+        // 默认值
+        tempSlider.value = 0.7;
+        tempDisplay.innerText = 0.7;
+    }
     // 1. 设置厂商下拉框
     const providerSelect = document.getElementById('api-provider');
     if (providerRec) {
@@ -508,11 +540,18 @@ async function loadApiSettings() {
 }
 
 // [修改] 点击“保存配置”按钮
+// [修改] 点击“保存配置”按钮
 window.manualSaveApi = async function () {
     const provider = document.getElementById('api-provider').value; // 获取厂商
     const host = document.getElementById('api-host').value.trim();
     const key = document.getElementById('api-key').value.trim();
     const currentModel = document.getElementById('current-model-text').innerText;
+
+    // --- 新增代码 1：获取滑块的值 ---
+    // 如果还没添加HTML，这里可能会报错，所以要确保 index.html 那步先做好了
+    const tempElement = document.getElementById('api-temp');
+    const temp = tempElement ? tempElement.value : '0.7';
+    // -----------------------------
 
     const modelToSave = (currentModel.includes('请点击') || currentModel.includes('->'))
         ? '' : currentModel;
@@ -522,12 +561,18 @@ window.manualSaveApi = async function () {
     await window.dbSystem.settings.put({ key: 'apiHost', value: host });
     await window.dbSystem.settings.put({ key: 'apiKey', value: key });
 
+    // --- 新增代码 2：保存温度到数据库 ---
+    await window.dbSystem.settings.put({ key: 'apiTemperature', value: temp });
+    // --------------------------------
+
     if (modelToSave) {
         await window.dbSystem.settings.put({ key: 'apiModel', value: modelToSave });
     }
 
     alert("配置已保存！");
 };
+
+
 // 1. 获取 Key 列表 (自动处理逗号分隔)
 function getApiKeys() {
     const raw = document.getElementById('api-key').value.trim();
@@ -538,8 +583,9 @@ function getApiKeys() {
 
 // 2. [核心] 轮询请求器 (自动换 Key 重试)
 // 参数: url, optionsBuilder(key) -> 返回 fetch 的 options
-async function requestWithKeyRotation(url, optionsBuilder) {
-    const keys = getApiKeys();
+async function requestWithKeyRotation(url, optionsBuilder, overrideKeys = null) {
+    // 1. 优先使用传入的 Keys (来自数据库)，如果没有传，才去读输入框 (来自设置页)
+    const keys = overrideKeys || getApiKeys();
 
     if (keys.length === 0) {
         throw new Error("未填写 API Key");
@@ -552,7 +598,7 @@ async function requestWithKeyRotation(url, optionsBuilder) {
         const currentKey = keys[i];
 
         try {
-            console.log(`正在尝试第 ${i + 1} 个 Key...`);
+            // console.log(`正在尝试第 ${i + 1} 个 Key...`); // 调试用，可注释
 
             // 构建带当前 Key 的请求头
             const options = optionsBuilder(currentKey);
@@ -576,7 +622,6 @@ async function requestWithKeyRotation(url, optionsBuilder) {
 
         } catch (e) {
             lastError = e;
-            // 如果是网络错误，也尝试下一个
             console.warn(`Key ${i + 1} 网络错误`, e);
         }
     }
@@ -674,4 +719,156 @@ window.toggleModelList = function () {
     const container = document.getElementById('model-list-container');
     if (container.innerHTML.trim() === '') return; // 没内容不展开
     container.classList.toggle('open');
+};
+/* main.js */
+
+// --- 替换 main.js 末尾的整个 triggerAIResponse 函数 ---
+
+/* js/main.js */
+
+window.triggerAIResponse = async function (btnElement) {
+    if (!window.currentActiveChatId) return alert("当前没有打开的聊天窗口");
+    if (btnElement.classList.contains('loading')) return;
+
+    // --- 1. 获取配置 ---
+    const hostRec = await window.dbSystem.settings.get('apiHost');
+    const modelRec = await window.dbSystem.settings.get('apiModel');
+    const keyRec = await window.dbSystem.settings.get('apiKey');
+    const tempRec = await window.dbSystem.settings.get('apiTemperature');
+
+    if (!hostRec || !hostRec.value) return alert("请配置 API Host");
+    const dbKeys = keyRec ? keyRec.value.split(',').map(k => k.trim()).filter(k => k) : [];
+    if (dbKeys.length === 0) return alert("请配置 API Key");
+
+    btnElement.classList.add('loading');
+
+    try {
+        // --- 2. 智能判断：谁该回复？ ---
+        // 获取会话成员
+        const chat = await window.dbSystem.chats.get(window.currentActiveChatId);
+        const messages = await window.dbSystem.getMessages(window.currentActiveChatId);
+
+        // 找出最后一条消息的发送者
+        let lastSenderId = -1;
+        if (messages.length > 0) {
+            lastSenderId = messages[messages.length - 1].senderId;
+        }
+
+        // 确定 Role (Sender) 和 Receiver
+        // 逻辑：聊天室成员里，只要不是最后发消息的那个人，就是下一个要说话的人 (简单轮询)
+        // 如果是新对话(无消息)，默认让成员列表里第一个是AI的人说话，或者随机
+
+        const memberIds = chat.members; // 例如 [UserID, AI_ID] 或 [AI_A, AI_B]
+
+        // 找到“下一位发言者”的ID
+        let nextSpeakerId = memberIds.find(id => id !== lastSenderId);
+        if (!nextSpeakerId) nextSpeakerId = memberIds[0]; // 如果找不到（比如自己跟自己聊），默认自己
+
+        // 获取角色数据
+        const speaker = await window.dbSystem.getChar(nextSpeakerId);
+        const listener = await window.dbSystem.getChar(memberIds.find(id => id !== nextSpeakerId));
+
+        if (!speaker) throw new Error("找不到发言者角色数据");
+
+        // --- 3. 构造 Prompt ---
+        const recentMessages = messages.slice(-20);
+
+        // 构建 System Prompt
+        const systemPrompt = `
+你现在扮演：${speaker.name}。
+设定：${speaker.desc || "无"}。
+对话对象：${listener ? listener.name : "未知"}。
+
+【回复规则】
+1. 必须以 JSON 数组格式返回。
+2. 保持角色性格。
+3. 格式：[{"text": "内容..."}]
+`.trim();
+
+        const apiMessages = [{ role: "system", content: systemPrompt }];
+
+        // 构建历史记录 (关键：映射 role)
+        // 对于 API 来说，speaker 讲的话是 "assistant"，别人讲的话是 "user"
+        for (const msg of recentMessages) {
+            // 获取发送这条消息的人的名字
+            const msgSender = await window.dbSystem.getChar(msg.senderId);
+            const prefix = msgSender ? `${msgSender.name}: ` : "";
+
+            apiMessages.push({
+                role: (msg.senderId === nextSpeakerId) ? "assistant" : "user",
+                content: prefix + msg.text
+            });
+        }
+
+        // --- 4. 显示 Typing 动画 ---
+        // 注意：Typing 气泡的 senderId 设为 nextSpeakerId，这样会显示在对方（左侧）位置
+        const typingMsg = {
+            chatId: window.currentActiveChatId,
+            text: `<div class="typing-bubble"><div class="typing-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>`,
+            senderId: nextSpeakerId,
+            time: new Date(),
+            isTyping: true
+        };
+        if (chatScroller) chatScroller.append(typingMsg);
+
+        // --- 5. 请求 API (保持原有逻辑不变) ---
+        const temperature = tempRec ? parseFloat(tempRec.value) : 0.7;
+        const apiUrl = `${hostRec.value}/chat/completions`;
+
+        const response = await requestWithKeyRotation(apiUrl, (key) => ({
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                model: modelRec.value || "gpt-3.5-turbo",
+                messages: apiMessages,
+                temperature: temperature,
+                response_format: { type: "json_object" }
+            })
+        }), dbKeys);
+
+        const data = await response.json();
+
+        // 移除 loading
+        if (chatScroller) chatScroller.removeLast();
+
+        // --- 6. 解析结果并上屏 ---
+        let content = data.choices[0].message.content;
+        let replyArray = [];
+        try {
+            content = content.replace(/```json/g, '').replace(/```/g, '').trim();
+            const parsed = JSON.parse(content);
+            replyArray = Array.isArray(parsed) ? parsed : (parsed.messages || [parsed]);
+        } catch (e) {
+            replyArray = [{ text: content }];
+        }
+
+        for (const item of replyArray) {
+            if (!item.text) continue;
+
+            // 存入数据库 (senderId = nextSpeakerId)
+            await window.dbSystem.addMessage(window.currentActiveChatId, item.text, nextSpeakerId, 'text');
+
+            // 渲染
+            if (chatScroller) {
+                chatScroller.append({
+                    chatId: window.currentActiveChatId,
+                    text: item.text,
+                    senderId: nextSpeakerId,
+                    time: new Date()
+                });
+            }
+
+            await window.dbSystem.chats.update(window.currentActiveChatId, {
+                lastMsg: item.text,
+                updated: new Date()
+            });
+        }
+
+    } catch (e) {
+        if (chatScroller) chatScroller.removeLast();
+        console.error(e);
+        alert("AI请求失败: " + e.message);
+    } finally {
+        btnElement.classList.remove('loading');
+    }
 };

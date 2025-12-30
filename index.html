@@ -121,6 +121,14 @@
                     </div>
 
                     <div id="model-list-container" class="model-dropdown"></div>
+                    <label class="setting-label" style="margin-top: 20px;">
+                        温度 (创造性): <span id="temp-display" style="color:#9B9ECE; font-weight:bold;">0.7</span>
+                    </label>
+                    <div class="input-wrapper">
+                        <input type="range" id="api-temp" style="width:100%;" min="0" max="2" step="0.1" value="0.7"
+                            oninput="document.getElementById('temp-display').innerText = this.value">
+                    </div>
+
 
                     <div style="margin-top: 30px;">
                         <button class="btn-main" onclick="manualSaveApi()">保存配置</button>
@@ -154,18 +162,7 @@
                 </div>
 
                 <div id="tab-contacts" class="tab-content">
-                    <div class="contact-item">
-                        <div class="avatar" style="background:#E8C1C6">★</div>
-                        <div class="chat-info">
-                            <h4>特别关心</h4>
-                        </div>
-                    </div>
-                    <div class="contact-item">
-                        <div class="avatar" style="background:#A0C1B8">G</div>
-                        <div class="chat-info">
-                            <h4>群聊小组</h4>
-                        </div>
-                    </div>
+                    <div id="contact-list-dynamic"></div>
                 </div>
 
                 <div id="tab-moment" class="tab-content">
@@ -254,7 +251,7 @@
                     </svg>
                 </div>
 
-                <div class="icon-btn ai-send-btn">
+                <div class="icon-btn ai-send-btn" onclick="triggerAIResponse(this)">
                     <svg viewBox="0 0 24 24" width="24" height="24" fill="white">
                         <path
                             d="M21.435 2.582a1.933 1.933 0 00-1.93-.503L3.408 6.759a1.92 1.92 0 00-1.384 1.522c-.142.75.355 1.704 1.003 2.102l5.033 3.094 2.054 3.83c.21.39.426.779.803.957.25.119.531.149.789.043.435-.178.68-.621.844-1.049l.643-1.685 4.095 2.517c.504.31.956.276 1.342-.037.456-.37.648-.96.721-1.536l2.365-11.87a1.986 1.986 0 00-.281-1.666zM18.89 5.385l-8.55 7.684-1.748-1.075 10.298-6.609z" />
@@ -309,8 +306,8 @@
                     </div>
 
                     <div class="form-group">
-                        <input type="text" id="inp-name" class="input-style" placeholder="昵称 (如: 小可爱)">
-                        <input type="text" id="inp-id" class="input-style" placeholder="ID (如: 9527)">
+                        <input type="text" id="inp-name" class="input-style" placeholder="姓名">
+
                         <textarea id="inp-desc" class="input-style" placeholder="写点什么人设描述吧..."></textarea>
                     </div>
 
@@ -350,8 +347,8 @@
             </div>
 
             <div class="form-group">
-                <input type="text" id="c-inp-name" class="input-style" placeholder="好友昵称">
-                <input type="text" id="c-inp-id" class="input-style" placeholder="ID号">
+                <input type="text" id="c-inp-name" class="input-style" placeholder="好友姓名">
+
                 <textarea id="c-inp-desc" class="input-style" placeholder="备注或描述..."></textarea>
             </div>
 

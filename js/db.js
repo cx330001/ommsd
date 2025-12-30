@@ -1,121 +1,120 @@
 /* =========================================
-   db.js - 核心数据库逻辑 (修复版)
+   db.js - 核心数据库逻辑 (去冗余轻量版)
    ========================================= */
 
-// 1. 定义数据库
 const db = new Dexie('sisi_db');
 
-// 定义表结构
-// 注意：chats 表增加了复合索引 [contactId+personaId] 以消除黄色警告
-db.version(1).stores({
-    personas: '++id',
-    contacts: '++id',
-    chats: '++id, [contactId+personaId], updated',
+// 1. 定义表结构
+// chars: 统一存储所有角色。type=0为AI/好友，type=1为当前用户(我)
+// chats: members 是一个包含 charId 的数组，例如 [1, 5]
+db.version(2).stores({
+    chars: '++id, type, name',
+    chats: '++id, *members, updated',
     settings: 'key',
-    // [新增] 消息表：chatId用于查询某个会话的所有消息
-    messages: '++id, chatId, time'
+    messages: '++id, chatId, senderId, time'
 });
 
-
-// 2. 封装数据库接口
 const dbSystem = {
-    // --- 【关键修复】直接暴露表对象，供 render.js 调用 ---
-    personas: db.personas,
-    contacts: db.contacts,
+    chars: db.chars,
     chats: db.chats,
     settings: db.settings,
     messages: db.messages,
-    // 打开数据库
+
     open: async function () {
-        if (!db.isOpen()) {
-            await db.open();
-        }
+        if (!db.isOpen()) await db.open();
         await this.initDefault();
-        return;
     },
 
-    // 初始化默认数据
     initDefault: async function () {
-        const count = await db.personas.count();
+        const count = await db.chars.count();
         if (count === 0) {
-            console.log("初始化默认人设...");
-            await this.add("小可爱", "9527", "我是一个快乐的默认人设。", null);
-            const first = await db.personas.toArray();
-            await this.setCurrent(first[0].id);
+            // 初始化一个默认用户(我)
+            await this.addChar("我 (User)", "默认用户", null, 1);
+            // 初始化一个默认AI
+            await this.addChar("小助手 (AI)", "我是一个AI。", null, 0);
+
+            // 设置当前默认身份
+            const firstUser = await db.chars.where({ type: 1 }).first();
+            if (firstUser) await this.setCurrent(firstUser.id);
         }
     },
 
-    // --- 人设 (Persona) ---
-    add: function (name, userId, desc, avatar) {
-        return db.personas.add({ name, userId, desc, avatar, date: new Date() });
+    // --- 统一角色管理 ---
+    // type: 1=用户(Me), 0=AI/Contact
+    addChar: function (name, desc, avatar, type = 0) {
+        return db.chars.add({ name, desc, avatar, type, date: new Date() });
     },
-    getAll: function () {
-        return db.personas.toArray();
+    updateChar: function (id, name, desc, avatar) {
+        return db.chars.update(id, { name, desc, avatar });
     },
-    update: function (id, name, userId, desc, avatar) {
-        return db.personas.put({ id, name, userId, desc, avatar, date: new Date() });
+    getChar: function (id) {
+        return db.chars.get(id);
     },
+    // 获取所有的“我”
+    getMyPersonas: function () {
+        return db.chars.where('type').equals(1).toArray();
+    },
+    // 获取所有的“好友/AI”
+    getContacts: function () {
+        return db.chars.where('type').equals(0).toArray();
+    },
+
+    // --- 当前操作身份 ---
     setCurrent: function (id) {
         return db.settings.put({ key: 'currId', value: id });
     },
     getCurrent: async function () {
         const setting = await db.settings.get('currId');
         if (!setting) return null;
-        return await db.personas.get(setting.value);
+        return await db.chars.get(setting.value);
     },
 
-    // --- 好友 (Contacts) ---
-    addContact: function (name, userId, desc, avatar) {
-        return db.contacts.add({ name, userId, desc, avatar, date: new Date() });
-    },
-    updateContact: function (id, name, userId, desc, avatar) {
-        return db.contacts.put({ id, name, userId, desc, avatar, date: new Date() });
-    },
-    getContacts: function () {
-        return db.contacts.toArray();
-    },
+    // --- 聊天会话 ---
+    // 创建或获取会话 (支持 Char-to-Char)
+    // memberIds: [id1, id2]
+    createOrGetChat: async function (memberIds) {
+        // 排序以确保 [1,2] 和 [2,1] 查到的是同一个
+        const sortedIds = memberIds.sort((a, b) => a - b);
 
-    // --- 聊天会话 (Chats) ---
-    createOrGetChat: async function (contactId, personaId) {
-        // 使用复合索引查询，速度更快，也不会报错了
-        const existing = await db.chats
-            .where({ contactId: contactId, personaId: personaId })
-            .first();
+        // Dexie 不支持直接查询数组全匹配，这里先查包含第一个人的，再在内存过滤
+        // (对于轻量级应用性能足够)
+        const candidates = await db.chats.where('members').equals(sortedIds[0]).toArray();
+
+        const existing = candidates.find(c =>
+            c.members.length === sortedIds.length &&
+            c.members.every((val, index) => val === sortedIds[index])
+        );
 
         if (existing) {
-            // 更新时间，让它排到前面
             await db.chats.update(existing.id, { updated: new Date() });
             return existing.id;
         } else {
-            // 创建新会话
             return await db.chats.add({
-                contactId,
-                personaId,
+                members: sortedIds,
                 updated: new Date(),
-                lastMsg: "开始聊天吧！"
+                lastMsg: "新对话"
             });
         }
     },
 
     getChats: async function () {
-        // 按时间倒序获取所有会话
         return db.chats.orderBy('updated').reverse().toArray();
     },
+
     getMessages: async function (chatId) {
         return await db.messages.where('chatId').equals(chatId).toArray();
     },
 
-    // [新增] 保存一条消息
-    addMessage: async function (chatId, text, isMe, type = 'text') {
+    // 发送消息：记录是谁发的 (senderId) 而不是 isMe
+    addMessage: async function (chatId, text, senderId, type = 'text') {
         return await db.messages.add({
             chatId,
             text,
-            isMe: isMe ? 1 : 0, // 1代表我发的，0代表对方发的
+            senderId, // 关键修改
             type,
             time: new Date()
         });
     }
 };
 
-// 暴露给全局
 window.dbSystem = dbSystem;

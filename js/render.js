@@ -61,7 +61,8 @@ class VirtualScroller {
 
     init() {
         // 1. 设置总高度，撑开滚动条
-        const totalHeight = this.listData.length * this.itemHeight;
+        const totalHeight = this.listData.length * this.itemHeight + 100;
+
         this.content.style.height = totalHeight + 'px';
 
         // 2. 计算可视区域能放下多少个
@@ -225,19 +226,27 @@ window.prepareChat = async function (contactId) {
 
     // 渲染我的身份列表
     const listEl = document.getElementById('persona-select-list');
-    const myPersonas = await window.dbSystem.getAll();
+
+    // 【关键修复】使用 getMyPersonas() 替代 getAll()
+    const myPersonas = await window.dbSystem.getMyPersonas();
 
     if (myPersonas.length === 0) {
-        listEl.innerHTML = '<div style="padding:20px;text-align:center;color:#999">请先去“我”的页面创建一个身份</div>';
+        // 提示去创建身份（因为现在身份管理合并了，如果没有type=1的角色，就没法聊天）
+        listEl.innerHTML = `
+            <div style="padding:20px;text-align:center;color:#999">
+                还没有“面具”哦<br>
+                <span style="font-size:12px;color:var(--theme-purple);cursor:pointer;" onclick="document.getElementById('modal-select-me').style.display='none';switchTab('me', document.querySelector('.tab-item:last-child'))">去“我”的页面创建一个吧</span>
+            </div>`;
         return;
     }
 
     listEl.innerHTML = myPersonas.map(p => {
         // 简单处理头像显示
         let imgHtml = `<div class="avatar" style="width:40px;height:40px;margin-right:10px;font-size:14px;background:#9B9ECE;">${p.name[0]}</div>`;
+
         if (p.avatar instanceof Blob) {
             const u = URL.createObjectURL(p.avatar);
-            activeUrls.push(u); // 记得也要管理这个内存
+            if (window.activeUrls) window.activeUrls.push(u);
             imgHtml = `<div class="avatar" style="width:40px;height:40px;margin-right:10px;background-image:url(${u})"></div>`;
         } else if (typeof p.avatar === 'string' && p.avatar) {
             imgHtml = `<div class="avatar" style="width:40px;height:40px;margin-right:10px;background-image:url(${p.avatar})"></div>`;
@@ -249,7 +258,7 @@ window.prepareChat = async function (contactId) {
             ${imgHtml}
             <div>
                 <div style="font-weight:bold;">${p.name}</div>
-                <div style="font-size:12px;color:#999;">ID: ${p.userId}</div>
+                <div style="font-size:12px;color:#999;">${p.desc || '...'}</div>
             </div>
         </div>`;
     }).join('');
@@ -260,23 +269,12 @@ window.prepareChat = async function (contactId) {
 window.confirmChat = async function (myPersonaId) {
     if (!targetContactId) return;
 
-    // 调用数据库：创建或获取已有的会话ID
-    // (注意：这里假设你在 db.js 里加了 createOrGetChat 方法)
-    let chatId;
-    if (window.dbSystem.createOrGetChat) {
-        chatId = await window.dbSystem.createOrGetChat(targetContactId, myPersonaId);
-    } else {
-        alert("请先更新 db.js 文件，添加 createOrGetChat 方法！");
-        return;
-    }
+    // 现在的 createOrGetChat 接受一个数组
+    // 这样就支持任意组合了，比如 [AI_ID, AI_ID]
+    const chatId = await window.dbSystem.createOrGetChat([targetContactId, myPersonaId]);
 
-    // 关闭弹窗
     document.getElementById('modal-select-me').style.display = 'none';
-
-    // 刷新首页消息列表 (这样新会话会显示在第一个)
     await window.renderChatUI();
-
-    // 直接跳转进聊天页面
     window.openChatDetail(chatId);
 };
 
@@ -289,18 +287,19 @@ let chatScroller = null;
 let currentActiveChatId = null;
 
 // ==========================================
-//  ChatVirtualScroller: 不定高度虚拟列表类
+//  ChatVirtualScroller: 不定高度虚拟列表类 (通用版)
 // ==========================================
 class ChatVirtualScroller {
-    constructor(containerId, messages, meAvatar, contactAvatar) {
+    // 构造函数变动：传入 avatarMap 和 currentUserId
+    constructor(containerId, messages, avatarMap, currentUserId) {
         this.container = document.getElementById(containerId);
         this.messages = messages || [];
-        this.meAvatar = meAvatar;
-        this.contactAvatar = contactAvatar;
+        this.avatarMap = avatarMap || {}; // { id: "background-image:..." }
+        this.currentUserId = currentUserId; // 当前登录用户的ID
 
-        this.heightCache = new Map(); // 缓存高度
+        this.heightCache = new Map();
         this.estimatedItemHeight = 80;
-        this.visibleCount = 20; // 只渲染20条
+        this.visibleCount = 20;
         this.buffer = 5;
 
         // 初始化容器
@@ -354,29 +353,41 @@ class ChatVirtualScroller {
         this.content.style.paddingTop = paddingTop + 'px';
         this.content.style.paddingBottom = paddingBottom + 'px';
 
-        // 4. 生成HTML (DOM 销毁与重建都在这里发生)
+        // 4. 生成HTML
         let html = '';
         const visibleData = this.messages.slice(start, end);
 
         visibleData.forEach((msg, i) => {
             const realIndex = start + i;
-            const isMe = msg.isMe === 1;
-            const avatarStyle = isMe ? this.meAvatar : this.contactAvatar;
-            // 样式 class 对应 style.css
-            const rowClass = isMe ? 'msg-row me' : 'msg-row';
+
+            // --- 核心修改开始 ---
+
+            // 判断左右：发送者是否是当前用户
+            // 如果 currentUserId 为空(未登录)，或者不匹配，都显示在左边
+            const isRight = (this.currentUserId && msg.senderId === this.currentUserId);
+            const rowClass = isRight ? 'msg-row me' : 'msg-row';
+
+            // 获取头像：从 Map 中查找，找不到用默认灰色
+            const avatarStyle = this.avatarMap[msg.senderId] || 'background:#ccc';
+
+            // --- 核心修改结束 ---
+
+            // 转义处理
+            let contentHtml = this.escapeHtml(msg.text);
+            if (msg.text && msg.text.includes('typing-dots')) {
+                contentHtml = msg.text;
+            }
 
             html += `
             <div class="virtual-item" data-index="${realIndex}">
                 <div class="${rowClass}">
                     <div class="avatar" style="${avatarStyle}"></div>
-                    <div class="msg-bubble">${this.escapeHtml(msg.text)}</div>
+                    <div class="msg-bubble">${contentHtml}</div>
                 </div>
             </div>`;
         });
 
         this.content.innerHTML = html;
-
-        // 5. 修正高度
         this.updateHeights();
     }
 
@@ -393,21 +404,32 @@ class ChatVirtualScroller {
 
     append(msg) {
         this.messages.push(msg);
+        this.container.scrollTop = this.container.scrollHeight + 10000;
         this.render();
-        this.scrollToBottom();
+        requestAnimationFrame(() => {
+            this.container.scrollTop = this.container.scrollHeight;
+            setTimeout(() => {
+                this.container.scrollTop = this.container.scrollHeight;
+            }, 50);
+        });
+    }
+
+    removeLast() {
+        if (this.messages.length > 0) {
+            this.messages.pop();
+            this.render();
+        }
     }
 
     scrollToBottom() {
-        // 使用 setTimeout 等待 DOM 渲染完成
-        setTimeout(() => {
-            // 1. 获取容器现在的总高度
-            const totalHeight = this.container.scrollHeight;
-            // 2. 强行设置滚动位置为最大高度 + 额外偏移量
-            this.container.scrollTop = totalHeight + 200;
-
-            // 3. 再次触发渲染，确保最后一条消息真的被画出来了（因为虚拟列表可能没来得及渲染最后一条）
-            this.render();
-        }, 60); //稍微延长一点时间到 60ms
+        requestAnimationFrame(() => {
+            const body = this.container;
+            body.scrollTop = body.scrollHeight + 500;
+            setTimeout(() => {
+                body.scrollTop = body.scrollHeight + 500;
+                this.render();
+            }, 50);
+        });
     }
 
     destroy() {
@@ -428,57 +450,83 @@ class ChatVirtualScroller {
 // -----------------------------------------------------
 window.openChatDetail = async function (chatId) {
     currentActiveChatId = chatId;
+    window.currentActiveChatId = chatId;
 
-    // 1. 获取会话信息
+    // 1. 获取会话和当前用户
+    const currentUser = await window.dbSystem.getCurrent();
     const chats = await window.dbSystem.getChats();
     const chat = chats.find(c => c.id === chatId);
     if (!chat) return;
 
-    const contact = await window.dbSystem.contacts.get(chat.contactId);
-    const me = await window.dbSystem.personas.get(chat.personaId);
+    // 2. 确定聊天标题 (对方的名字)
+    // 逻辑：在 members 里找一个“不是我”的人。如果都是我，或者都没找到，默认取第一个。
+    let targetId = chat.members.find(id => id !== currentUser?.id);
+    if (!targetId) targetId = chat.members[0];
 
-    // --- 修改开始：设置名字和状态 ---
+    const targetChar = await window.dbSystem.getChar(targetId);
+    if (targetChar) {
+        document.getElementById('chat-title-text').innerText = targetChar.name;
+    } else {
+        document.getElementById('chat-title-text').innerText = "未知用户";
+    }
 
-    // 1. 设置名字
-    document.getElementById('chat-title-text').innerText = contact.name;
-
-    // 2. 设置状态 (这里模拟随机在线状态，你可以根据需要改)
-    // 假设 ID 是偶数就在线，奇数就离线 (或者直接写死 true)
-    const isOnline = Math.random() > 0.3; // 70% 概率在线
-    // const isOnline = true; // 如果想永远在线，就用这一行
-
+    // 设置在线状态 (模拟)
+    const isOnline = Math.random() > 0.3;
     const statusDot = document.getElementById('chat-status-dot');
     const statusText = document.getElementById('chat-status-text');
-
     if (isOnline) {
         statusDot.classList.add('online');
         statusText.innerText = "在线";
     } else {
         statusDot.classList.remove('online');
-        statusText.innerText = "离线"; // 或者显示 "15分钟前在线"
+        statusText.innerText = "离线";
     }
+
     window.openApp('conversation');
 
-    // 2. 准备头像
-    let contactStyle = `background:#E8C1C6`;
-    if (contact.avatar instanceof Blob) contactStyle = `background-image:url(${URL.createObjectURL(contact.avatar)})`;
-    else if (typeof contact.avatar === 'string') contactStyle = `background-image:url(${contact.avatar})`;
+    // 3. [关键] 预处理所有成员的头像 (Avatar Map)
+    // 这样 Scroller 渲染时直接取，不用每次都 createObjectURL
+    const avatarMap = {};
 
-    let meStyle = `background:#9B9ECE`;
-    if (me.avatar instanceof Blob) meStyle = `background-image:url(${URL.createObjectURL(me.avatar)})`;
-    else if (typeof me.avatar === 'string') meStyle = `background-image:url(${me.avatar})`;
+    // 遍历所有成员ID (members 是数组 [1, 5] 等)
+    for (const memberId of chat.members) {
+        const char = await window.dbSystem.getChar(memberId);
+        if (char) {
+            let style = "background:#ccc"; // 默认灰
+            if (char.avatar instanceof Blob) {
+                const u = URL.createObjectURL(char.avatar);
+                // 记得加入 activeUrls 以便 cleanUpMemory 时释放
+                if (window.activeUrls) window.activeUrls.push(u);
+                style = `background-image:url(${u})`;
+            } else if (typeof char.avatar === 'string' && char.avatar) {
+                style = `background-image:url(${char.avatar})`;
+            } else {
+                // 没有头像时，可以用名字首字母做背景
+                // 这里简单处理，你可以写复杂点
+                style = `background:#9B9ECE`;
+            }
+            avatarMap[memberId] = style;
+        }
+    }
 
-    // 3. [重要] 从数据库取历史消息
+    // 4. 从数据库取消息
     const messages = await window.dbSystem.getMessages(chatId);
 
-    // 4. 清理旧列表，新建虚拟列表
+    // 5. 初始化虚拟列表
     if (chatScroller) {
         chatScroller.destroy();
         chatScroller = null;
     }
-    chatScroller = new ChatVirtualScroller('chat-body', messages, meStyle, contactStyle);
 
-    // 5. 绑定回车键
+    // 传入 avatarMap 和 当前用户的ID (用于判断左右)
+    chatScroller = new ChatVirtualScroller(
+        'chat-body',
+        messages,
+        avatarMap,
+        currentUser ? currentUser.id : null
+    );
+
+    // 6. 绑定回车键
     const input = document.querySelector('.chat-input');
     if (input) {
         input.onkeydown = (e) => {
@@ -514,21 +562,25 @@ function scrollToBottom() {
 
 // --- 6. 渲染首页 (消息列表 + 个人中心) ---
 window.renderChatUI = async function () {
-    const user = await window.dbSystem.getCurrent();
+    // 1. 这里定义的变量叫 currentUser
+    const currentUser = await window.dbSystem.getCurrent();
 
     // --- A. 渲染“我”的页面 ---
-    if (user) {
-        const container = document.getElementById('me-content-placeholder');
-        if (container) {
-            let avatarStyle = "";
-            let avatarText = user.name[0];
-            if (user.avatar instanceof Blob) {
-                const url = URL.createObjectURL(user.avatar);
-                activeUrls.push(url);
+    const container = document.getElementById('me-content-placeholder');
+    if (container) {
+        // 2. 这里必须用 currentUser 来判断
+        if (currentUser) {
+            // 1. 如果有当前身份，显示卡片
+            let avatarStyle = "background:#9B9ECE"; // 默认紫色
+            let avatarText = currentUser.name[0]; // 修改 user -> currentUser
+
+            if (currentUser.avatar instanceof Blob) { // 修改 user -> currentUser
+                const url = URL.createObjectURL(currentUser.avatar);
+                if (window.activeUrls) window.activeUrls.push(url);
                 avatarStyle = `background-image: url(${url});`;
                 avatarText = "";
-            } else if (typeof user.avatar === 'string' && user.avatar.length > 0) {
-                avatarStyle = `background-image: url(${user.avatar});`;
+            } else if (typeof currentUser.avatar === 'string' && currentUser.avatar.length > 0) {
+                avatarStyle = `background-image: url(${currentUser.avatar});`;
                 avatarText = "";
             }
 
@@ -536,9 +588,7 @@ window.renderChatUI = async function () {
                 <div class="me-card">
                     <div class="me-avatar" style="${avatarStyle}" onclick="openModal()">${avatarText}</div>
                     <div class="chat-info" onclick="openModal()" style="flex-grow:1;">
-                        <h3 style="margin:0;color:#333;">${user.name}</h3>
-                        <p style="margin-top:5px;font-size:12px;color:#999;">ID: ${user.userId}</p>
-                    </div>
+                        <h3 style="margin:0;color:#333;">${currentUser.name}</h3> <p style="margin:4px 0 0 0;color:#999;font-size:12px;">${currentUser.desc || '点击切换/管理身份'}</p> </div>
                     <div style="padding:10px; cursor:pointer;" onclick="editCurrentPersona()">
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="#9B9ECE">
                             <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
@@ -547,39 +597,50 @@ window.renderChatUI = async function () {
                 </div>
                 <div class="menu-item"><div class="chat-info"><h4>通用设置</h4></div></div>
             `;
+        } else {
+            // 2. [修复空白] 如果没有选中身份，显示创建按钮
+            container.innerHTML = `
+                <div class="me-card" onclick="showAddForm(); document.getElementById('modal-persona').style.display='flex';">
+                    <div class="me-avatar" style="background:#ddd; color:#fff;">+</div>
+                    <div class="chat-info">
+                        <h3 style="margin:0;color:#333;">暂无身份</h3>
+                        <p style="margin:4px 0 0 0;color:#999;font-size:12px;">点击创建你的第一个人设</p>
+                    </div>
+                </div>
+            `;
         }
     }
 
     // --- B. 渲染“消息”列表 (从数据库读取) ---
     const list = document.getElementById('msg-list');
-    if (!list) return;
+
 
     list.innerHTML = ''; // 清空列表
 
     // 检查是否有 getChats 方法
-    if (!window.dbSystem.getChats) return;
+
 
     const chats = await window.dbSystem.getChats();
 
-    if (chats.length === 0) {
-        list.innerHTML = `
-            <div style="text-align:center;color:#ccc;margin-top:50px;font-size:14px;">
-                暂无消息<br>去好友列表发起聊天吧
-            </div>`;
-        return;
-    }
+    if (chats.length === 0) return;
 
     // 遍历会话并显示
     for (const chat of chats) {
-        const contact = await window.dbSystem.contacts.get(chat.contactId);
-        const me = await window.dbSystem.personas.get(chat.personaId);
+        // 逻辑更新：
+        // 以前是找 contactId，现在 chat.members 是一个数组 [id1, id2]
+        // 我们需要找到 "不是我" 的那个 ID 来展示头像
+        let targetId = chat.members.find(id => id !== currentUser?.id);
+        if (!targetId) targetId = chat.members[0]; // 防御性
 
-        // 如果人被删了，就不显示这个会话
-        if (!contact || !me) continue;
+        const targetChar = await window.dbSystem.getChar(targetId);
+        if (!targetChar) continue;
 
-        let img = contact.name[0];
+        // 渲染头像
+        let img = targetChar.name[0];
         let style = "background:#E8C1C6"; // 默认莫兰迪粉
 
+        // =========== ❌ 错误代码 ===========
+        /*
         if (contact.avatar instanceof Blob) {
             const u = URL.createObjectURL(contact.avatar);
             activeUrls.push(u);
@@ -589,17 +650,28 @@ window.renderChatUI = async function () {
             img = "";
             style = `background-image:url(${contact.avatar})`;
         }
+        */
+
+        // =========== ✅ 修正代码 (把 contact 改为 targetChar) ===========
+        if (targetChar.avatar instanceof Blob) {
+            const u = URL.createObjectURL(targetChar.avatar);
+            if (window.activeUrls) window.activeUrls.push(u); // 建议加上 window. 前缀以防万一
+            img = "";
+            style = `background-image:url(${u})`;
+        } else if (typeof targetChar.avatar === 'string' && targetChar.avatar) {
+            img = "";
+            style = `background-image:url(${targetChar.avatar})`;
+        }
+        // ============================================================
 
         const html = `
         <div class="chat-item" onclick="openChatDetail(${chat.id})">
             <div class="avatar" style="${style}">${img}</div>
             <div class="chat-info">
-                <h4>${contact.name}</h4>
+                <h4>${targetChar.name}</h4>
                 <p>${chat.lastMsg || '暂无消息'}</p>
             </div>
-            <div class="chat-meta">刚刚</div>
         </div>`;
-
         list.insertAdjacentHTML('beforeend', html);
     }
 };

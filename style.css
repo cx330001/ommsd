@@ -184,16 +184,21 @@ body {
 /* --- 内容区 --- */
 .app-body {
     flex-grow: 1;
-    /* 允许内部内容滚动 */
     overflow-y: auto;
-    /* iOS 惯性滚动，让手感顺滑 */
     -webkit-overflow-scrolling: touch;
-
     padding-top: 10px;
-    padding-bottom: 80px;
 
-    /* 防止底部被刘海屏或手势条遮挡 */
-    padding-bottom: calc(80px + env(safe-area-inset-bottom));
+    /* 🔴 [删除或注释掉这一行] 不要在这里加 padding，否则子元素没法铺满到底部 */
+    /* padding-bottom: calc(80px + env(safe-area-inset-bottom)); */
+    padding-bottom: 0;
+}
+
+/* 🟢 [新增] 给普通页面（消息、个人、发现）手动加底部内边距，防止被导航栏挡住 */
+#msg-list,
+#me-content-placeholder,
+#tab-moment {
+    padding-bottom: calc(90px + env(safe-area-inset-bottom));
+    /* 留足空间 */
 }
 
 .tab-content {
@@ -623,14 +628,23 @@ textarea.input-style {
 }
 
 .conversation-header {
-    position: relative;
-    /* 关键：让内部的绝对定位以我为准 */
+    position: absolute;
+    /* 关键修改：从 relative 改为 absolute */
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+
+    /* 保持内部内容居中 */
     display: flex;
     justify-content: center;
     align-items: center;
-    height: 100%;
-    /* 占满头部高度 */
-    width: 100%;
+
+    /* 关键：防止标题栏遮挡左右两侧按钮的点击 */
+    pointer-events: none;
+
+    /* 确保层级正确，不要太高盖住按钮，也不要太低被背景盖住 */
+    z-index: 1;
 }
 
 /* 2. 名字：保持原样，不用动 */
@@ -644,21 +658,17 @@ textarea.input-style {
 /* 3. 状态栏：脱离文档流，悬浮在名字下方 */
 .status-container {
     position: absolute;
-    /* 关键：不占位，悬浮 */
-
-    /* 定位逻辑：放在父容器垂直中心往下一点的位置 */
     top: 50%;
     left: 50%;
     transform: translate(-50%, 14px);
-    /* -50%水平居中，14px是向下偏移量 */
+    /* 在中心点向下偏移 */
 
     display: flex;
     align-items: center;
     gap: 4px;
     white-space: nowrap;
-    /* 防止文字换行 */
-    pointer-events: none;
-    /* 防止遮挡点击 */
+    pointer-events: auto;
+    /* 如果状态栏需要点击，这里可以开启 */
 }
 
 /* --- 以下样式保持不变 --- */
@@ -935,4 +945,55 @@ select.setting-input {
     background-repeat: no-repeat;
     background-position: right 10px center;
     background-size: 24px;
+}
+
+.typing-bubble {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 12px 18px;
+    /* 比普通气泡稍微宽一点 */
+    min-width: 40px;
+}
+
+/* 三个点的容器 */
+.typing-dots {
+    display: flex;
+    gap: 4px;
+}
+
+/* 单个点 */
+.dot {
+    width: 6px;
+    height: 6px;
+    background-color: #999;
+    border-radius: 50%;
+    animation: typingBounce 1.4s infinite ease-in-out both;
+}
+
+.dot:nth-child(1) {
+    animation-delay: -0.32s;
+}
+
+.dot:nth-child(2) {
+    animation-delay: -0.16s;
+}
+
+.dot:nth-child(3) {
+    animation-delay: 0s;
+}
+
+@keyframes typingBounce {
+
+    0%,
+    80%,
+    100% {
+        transform: scale(0);
+        opacity: 0.5;
+    }
+
+    40% {
+        transform: scale(1);
+        opacity: 1;
+    }
 }
