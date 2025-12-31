@@ -684,13 +684,13 @@
                     <div class="app-header" style="background: #fff;">
                         <div style="height:calc(10px + env(safe-area-inset-top));"></div>
                         <div class="header-content">
-                            <div class="header-left" onclick="closeSubPage('visual')"
+                            <div class="header-left" onclick="event.stopPropagation(); closeSubPage('visual')"
                                 style="width: 40px; padding-left: 5px;">
                                 <svg viewBox="0 0 24 24" width="28" height="28">
                                     <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
                                 </svg>
                             </div>
-                            <div class="header-title"><span style="font-size:17px;font-weight:600;">外观设置</span></div>
+                            <div class="header-title"><span style="font-size:17px;font-weight:600;">头像与昵称</span></div>
                             <div class="header-right" onclick="saveVisualSettings()">
                                 <span style="font-size:16px;color:var(--theme-purple);font-weight:600;">完成</span>
                             </div>
@@ -819,7 +819,6 @@
                                     d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z" />
                             </svg>
                         </div>
-
                         <div id="wb-btn-add" onclick="openWorldBookEdit()" style="cursor:pointer; display:flex;">
                             <svg viewBox="0 0 24 24" width="26" height="26" fill="#9B9ECE">
                                 <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
@@ -828,7 +827,8 @@
                     </div>
                 </div>
             </div>
-            <div class="app-body" style="padding: 10px 16px;">
+
+            <div style="flex-shrink: 0; padding: 10px 16px 0 16px; background: #F9F9FC; z-index: 10;">
                 <div class="avatar-tabs" style="margin-bottom:10px;">
                     <div class="avatar-tab active" id="wb-tab-global" onclick="switchWorldBookTab('global')">全局设定</div>
                     <div class="avatar-tab" id="wb-tab-local" onclick="switchWorldBookTab('local')">局部设定</div>
@@ -836,7 +836,9 @@
 
                 <div id="wb-category-bar" class="category-scroll-container">
                 </div>
+            </div>
 
+            <div class="app-body" style="padding: 0 16px;">
                 <div id="worldbook-list-container" style="padding-bottom: 80px;"></div>
             </div>
 
