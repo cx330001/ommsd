@@ -691,8 +691,11 @@
                             </svg>
                         </div>
                         <div class="header-title"><span style="font-size:17px;font-weight:600;">头像与昵称</span></div>
-                        <div class="header-right" onclick="saveVisualSettings()">
-                            <span style="font-size:16px;color:var(--theme-purple);font-weight:600;">完成</span>
+                        <div class="header-right" onclick="saveVisualSettings()"
+                            style="width:40px; display:flex; justify-content:center;">
+                            <svg viewBox="0 0 24 24" width="28" height="28" fill="#9B9ECE">
+                                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                            </svg>
                         </div>
                     </div>
                 </div>
@@ -990,18 +993,13 @@
         </div>
         <div id="msg-context-menu-overlay" class="msg-menu-overlay" style="display: none;" onclick="hideMsgMenu()">
             <div id="msg-menu-box" class="msg-menu-box">
-                <div class="msg-menu-item" onclick="handleCopyMsg()">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="#666">
-                        <path
-                            d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
-                    </svg>
+                <div class="msg-menu-item" onclick="handleCopyMsg()" style="justify-content: center;">
                     <span>复制</span>
                 </div>
+
                 <div class="msg-menu-line"></div>
-                <div class="msg-menu-item danger" onclick="handleDeleteMsg()">
-                    <svg viewBox="0 0 24 24" width="20" height="20" fill="#FF3B30">
-                        <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
-                    </svg>
+
+                <div class="msg-menu-item" onclick="handleDeleteMsg()" style="justify-content: center;">
                     <span>删除</span>
                 </div>
             </div>

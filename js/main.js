@@ -608,25 +608,26 @@ window.sendMessage = async function () {
 
     if (!senderId) return alert("无法确定发送者身份");
 
-    // --- 核心修复结束 ---
+    const newId = await window.dbSystem.addMessage(currentActiveChatId, text, senderId, 'text');
 
-    // 3. 保存到数据库
-    await window.dbSystem.addMessage(currentActiveChatId, text, senderId, 'text');
-
-    // 4. UI 渲染 (追加到界面)
+    // 【核心修复点 2】：把 newId 塞给虚拟列表
     chatScroller.append({
+        id: newId,   // <--- 必须有这个！
         chatId: currentActiveChatId,
         text: text,
         senderId: senderId,
         time: new Date()
     });
 
-    // 5. 更新最后一条消息
+    // 更新会话最后一条消息
     await window.dbSystem.chats.update(currentActiveChatId, {
         lastMsg: text,
         updated: new Date()
     });
+
+    // 刷新消息列表预览（如果不加这句，返回首页时可能看不到最新消息）
     if (window.renderChatUI) window.renderChatUI();
+
     input.value = '';
 };
 
@@ -3085,28 +3086,42 @@ let activeMenuMsgId = null; // 记录当前正在操作哪条消息
 let activeMenuMsgText = "";
 
 // 1. 显示菜单
-window.showMsgMenu = function (x, y, bubbleEl) {
-    activeMenuMsgId = currentLongPressMsgId; // 从 render.js 的全局变量获取
-    activeMenuMsgText = currentLongPressText;
-
-    const overlay = document.getElementById('msg-context-menu-overlay');
+window.showMsgMenu = function (x, y, targetBubble) {
     const menu = document.getElementById('msg-menu-box');
+    const overlay = document.getElementById('msg-context-menu-overlay');
+    if (!menu || !overlay) return;
 
+    // --- 【关键修复点在这里】 ---
+    // 从传进来的 DOM 对象中获取 ID，并赋值给全局变量
+    if (targetBubble) {
+        activeMenuMsgId = targetBubble.getAttribute('data-msg-id');
+    }
+
+    // 如果没获取到 ID，就别弹菜单了，防止误操作
+    if (!activeMenuMsgId) {
+        console.error("未获取到消息 ID，无法显示菜单");
+        return;
+    }
+    // -------------------------
+
+    // 显示遮罩和菜单
     overlay.style.display = 'block';
+    menu.style.display = 'flex';
 
-    // 智能定位：
-    // 如果点击位置太靠右，菜单往左偏
-    // 如果点击位置太靠下，菜单往上偏
-    const winW = window.innerWidth;
-    const winH = window.innerHeight;
-    const menuW = 120; // 估算宽度
-    const menuH = 100; // 估算高度
+    // 计算位置（包含之前的边缘检测修复）
+    const screenW = window.innerWidth || document.documentElement.clientWidth;
+    const menuW = menu.offsetWidth;
 
     let left = x;
-    let top = y - 20; // 默认手指上方一点
+    let top = y - 30;
 
-    if (x + menuW > winW - 10) left = winW - menuW - 10;
-    if (y + menuH > winH - 10) top = y - menuH;
+    // 防止左溢出
+    if (left < 10) left = 10;
+
+    // 防止右溢出
+    if (left + menuW > screenW - 10) {
+        left = screenW - menuW - 10;
+    }
 
     menu.style.left = left + 'px';
     menu.style.top = top + 'px';
@@ -3119,38 +3134,52 @@ window.hideMsgMenu = function () {
 
 // 3. 执行删除
 window.handleDeleteMsg = async function () {
-    if (!activeMenuMsgId || !window.currentActiveChatId) return;
+    // 1. 隐藏菜单
+    window.hideMsgMenu();
 
-    // 1. 数据库删除消息
-    await window.dbSystem.deleteMessage(activeMenuMsgId);
-
-    // 2. UI 移除 (调用刚才加强过的 render.js 方法)
-    if (window.chatScroller) {
-        window.chatScroller.removeMessageById(activeMenuMsgId);
+    // 2. 校验 ID
+    if (!activeMenuMsgId || activeMenuMsgId === "undefined") {
+        console.error("无法删除：消息 ID 无效");
+        return;
     }
+    const msgIdToDelete = parseInt(activeMenuMsgId);
 
-    // --- 【核心修复】更新“最后一条消息” ---
-    // 重新查一下这个会话最新的消息
-    const latestMsgs = await window.dbSystem.getMessagesPaged(window.currentActiveChatId, 1, 0);
-    let newLastMsg = "暂无消息";
-    if (latestMsgs.length > 0) {
-        newLastMsg = latestMsgs[latestMsgs.length - 1].text; // 取最新一条
+    try {
+        // --- A. 数据库删除 (最重要的一步) ---
+        await window.dbSystem.messages.delete(msgIdToDelete);
+
+        // --- B. 更新会话最后一条消息预览 (防止退出去看到旧消息) ---
+        const latestMsgs = await window.dbSystem.getMessagesPaged(window.currentActiveChatId, 1, 0);
+        let newLastMsg = "暂无消息";
+        if (latestMsgs.length > 0) {
+            const last = latestMsgs[latestMsgs.length - 1];
+            newLastMsg = last.type === 'image' ? '[图片]' : last.text;
+        }
+        await window.dbSystem.chats.update(window.currentActiveChatId, {
+            lastMsg: newLastMsg,
+            updated: new Date()
+        });
+
+        // --- C. 【核弹级修复】强制刷新当前聊天窗口 ---
+        // 这行代码会重新从数据库拉取最新消息，重新构建列表
+        // 从而彻底解决“删不掉”、“有残留”的问题
+        if (window.openChatDetail && window.currentActiveChatId) {
+            await window.openChatDetail(window.currentActiveChatId);
+
+            // 保持滚动条在底部 (可选，体验更好)
+            setTimeout(() => {
+                const body = document.getElementById('chat-body');
+                if (body) body.scrollTop = body.scrollHeight;
+            }, 50);
+        }
+
+        // --- D. 顺便刷新首页列表 ---
+        if (window.renderChatUI) window.renderChatUI();
+
+    } catch (e) {
+        console.error("删除失败:", e);
+        alert("删除出错，请刷新页面重试");
     }
-
-    // 更新会话表的 lastMsg 字段
-    await window.dbSystem.chats.update(window.currentActiveChatId, {
-        lastMsg: newLastMsg,
-        updated: new Date() // 顺便更新时间
-    });
-
-    // 3. 【核心修复】静默刷新首页列表
-    // 这样当你退出聊天窗口时，看到的列表已经是新的了
-    if (window.renderChatUI) {
-        window.renderChatUI();
-    }
-
-    // 关闭菜单
-    hideMsgMenu();
 };
 
 // 4. 执行复制

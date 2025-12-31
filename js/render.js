@@ -429,30 +429,33 @@ class ChatVirtualScroller {
             this.isLoading = false;
         });
     }
+    /* js/render.js */
+
+    // 假设你的 ChatScroller 类里面有这个方法
+    // 如果没有，请在 ChatScroller.prototype 或类定义中添加：
+
     removeMessageById(id) {
-        const idx = this.messages.findIndex(m => m.id === id);
-        if (idx !== -1) {
-            // 1. 先从数据源移除
-            this.messages.splice(idx, 1);
+        if (!this.messages) return;
 
-            // 2. 【新增】暴力移除当前 DOM，给用户瞬间反馈
-            const bubble = this.container.querySelector(`[data-msg-id="${id}"]`);
-            if (bubble) {
-                // 找到包含这个气泡的行容器 (virtual-item)
-                const row = bubble.closest('.virtual-item');
-                if (row) row.style.display = 'none'; // 直接隐藏，视觉立即生效
-            }
-
-            // 3. 清除高度缓存并重新计算
-            this.heightCache.clear();
-
-            // 4. 强制重新渲染 (稍微延迟一点点，让 DOM 操作先消化)
-            requestAnimationFrame(() => {
-                this.render();
-            });
-
-            console.log("UI已移除消息:", id);
+        const targetId = String(id);
+        // 1. 从内存数组移除
+        const index = this.messages.findIndex(m => String(m.id) === targetId);
+        if (index !== -1) {
+            this.messages.splice(index, 1);
         }
+
+        // 2. 暴力移除 DOM (给用户瞬间反馈，防止重载慢了)
+        // 查找所有 data-msg-id 等于该 ID 的气泡
+        const bubbles = this.content.querySelectorAll(`.msg-bubble[data-msg-id="${targetId}"]`);
+        bubbles.forEach(el => {
+            // 找到外层的 .virtual-item 并隐藏/移除
+            const row = el.closest('.virtual-item');
+            if (row) row.style.display = 'none'; // 先隐藏，等 refresh
+        });
+
+        // 3. 清理缓存并重绘
+        this.heightCache.clear();
+        this.render();
     }
     render() {
         const scrollTop = this.container.scrollTop;
@@ -1092,56 +1095,71 @@ let longPressStartPos = { x: 0, y: 0 };
 let currentLongPressMsgId = null;
 let currentLongPressText = "";
 
-// 监听聊天容器的触摸事件 (Event Delegation)
-const chatBody = document.getElementById('chat-body');
-if (chatBody) {
-    chatBody.addEventListener('touchstart', (e) => {
-        // 找到最近的 msg-bubble
-        const bubble = e.target.closest('.msg-bubble');
-        if (!bubble) return;
+/* js/render.js */
 
-        const id = parseInt(bubble.getAttribute('data-msg-id'));
-        if (!id) return;
+// --- 全局长按监听 (修复新消息无法长按的问题) ---
+// 将监听器绑定在 document 上，这样无论 DOM 怎么变，都能捉到
 
-        currentLongPressMsgId = id;
-        currentLongPressText = bubble.getAttribute('data-msg-text'); // 存下来给复制用
-        longPressStartPos = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+let globalLongPressTimer = null;
+let globalLongPressStart = { x: 0, y: 0 };
+let currentLongPressBubble = null;
 
-        // 视觉反馈
-        bubble.classList.add('long-pressed');
+document.addEventListener('touchstart', function (e) {
+    // 1. 检查点击的目标是否是消息气泡
+    const bubble = e.target.closest('.msg-bubble');
 
-        // 开启定时器 (500ms 算长按)
-        longPressTimer = setTimeout(() => {
+    // 如果不是气泡，或者是系统消息，忽略
+    if (!bubble || bubble.classList.contains('msg-system')) return;
+
+    currentLongPressBubble = bubble;
+    globalLongPressStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+
+    // 视觉反馈
+    bubble.classList.add('long-pressed');
+
+    // 开启定时器 (500ms)
+    globalLongPressTimer = setTimeout(() => {
+        if (currentLongPressBubble) {
             // 触发菜单
-            window.showMsgMenu(longPressStartPos.x, longPressStartPos.y, bubble);
-            // 震动反馈 (如果有)
+            window.showMsgMenu(globalLongPressStart.x, globalLongPressStart.y, currentLongPressBubble);
+
+            // 震动反馈
             if (navigator.vibrate) navigator.vibrate(10);
-        }, 500);
-
-    }, { passive: true });
-
-    chatBody.addEventListener('touchmove', (e) => {
-        if (!longPressTimer) return;
-        const moveX = e.touches[0].clientX;
-        const moveY = e.touches[0].clientY;
-
-        // 如果移动超过 10px，视为滑动，取消长按
-        if (Math.abs(moveX - longPressStartPos.x) > 10 || Math.abs(moveY - longPressStartPos.y) > 10) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-            // 移除高亮
-            document.querySelectorAll('.msg-bubble.long-pressed').forEach(el => el.classList.remove('long-pressed'));
         }
-    }, { passive: true });
+    }, 500);
 
-    chatBody.addEventListener('touchend', () => {
-        if (longPressTimer) {
-            clearTimeout(longPressTimer);
-            longPressTimer = null;
-        }
+}, { passive: true });
+
+document.addEventListener('touchmove', function (e) {
+    if (!globalLongPressTimer) return;
+
+    const moveX = e.touches[0].clientX;
+    const moveY = e.touches[0].clientY;
+
+    // 如果移动超过 10px，视为滑动，取消长按
+    if (Math.abs(moveX - globalLongPressStart.x) > 10 || Math.abs(moveY - globalLongPressStart.y) > 10) {
+        clearTimeout(globalLongPressTimer);
+        globalLongPressTimer = null;
+
         // 移除高亮
-        setTimeout(() => {
-            document.querySelectorAll('.msg-bubble.long-pressed').forEach(el => el.classList.remove('long-pressed'));
-        }, 100);
-    });
-}
+        if (currentLongPressBubble) {
+            currentLongPressBubble.classList.remove('long-pressed');
+            currentLongPressBubble = null;
+        }
+    }
+}, { passive: true });
+
+document.addEventListener('touchend', function (e) {
+    // 手指抬起，清除定时器
+    if (globalLongPressTimer) {
+        clearTimeout(globalLongPressTimer);
+        globalLongPressTimer = null;
+    }
+    // 移除高亮
+    if (currentLongPressBubble) {
+        currentLongPressBubble.classList.remove('long-pressed');
+        currentLongPressBubble = null;
+    }
+}, { passive: true });
+
+// 为了兼容 PC 端调试，可以加上 mousedown/mouseup 的类似逻辑 (可选)
