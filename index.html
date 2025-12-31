@@ -532,7 +532,6 @@
             </div>
 
             <div class="app-body">
-
                 <div style="margin: 20px 0 8px 20px; font-size:13px; color:#888;">外观</div>
                 <div class="ios-group">
                     <div class="setting-row" onclick="openSubPage('visual')">
@@ -584,7 +583,6 @@
                     </div>
 
                     <div id="env-settings-panel" style="display:none; background:#fff;">
-
                         <div id="view-mode-single" class="city-info-box">
                             <div class="flight-connector">
                                 <svg class="flight-path-svg" viewBox="0 0 300 100" preserveAspectRatio="none">
@@ -598,7 +596,6 @@
                                     </svg>
                                 </div>
                             </div>
-
                             <div class="city-card" onclick="openCityModal('user')">
                                 <div class="city-card-header">
                                     <div class="city-icon-bg"><svg viewBox="0 0 24 24" width="20" height="20"
@@ -618,7 +615,6 @@
                                 <div id="ui-user-real" class="city-name-sub">映射: (空)</div>
                                 <div id="ui-user-weather" class="city-weather-info">--</div>
                             </div>
-
                             <div class="city-card" onclick="openCityModal('char')">
                                 <div class="city-card-header">
                                     <div class="city-icon-bg" style="background:#F4F4FF;"><svg viewBox="0 0 24 24"
@@ -664,15 +660,17 @@
                             <div id="env-group-list-container"></div>
                         </div>
 
-                        <div style="padding:15px; font-size:12px; color:#999; line-height:1.5; text-align:center;">💡
-                            映射真实城市以获取实时天气</div>
+                        <div style="padding:15px; font-size:12px; color:#999; line-height:1.5; text-align:center;">
+                            💡 映射真实城市以获取实时天气
+                        </div>
                     </div>
                 </div>
 
                 <div id="modal-wb-mount" class="modal-overlay" style="z-index: 310;">
                     <div class="modal-card">
                         <div class="close-modal"
-                            onclick="document.getElementById('modal-wb-mount').style.display='none'">×</div>
+                            onclick="document.getElementById('modal-wb-mount').style.display='none'">×
+                        </div>
                         <h3 style="margin-top:0;">选择局部设定</h3>
                         <p style="font-size:12px;color:#999;margin-bottom:15px;">勾选要挂载到当前会话的世界书 (全局设定默认生效)</p>
                         <div id="wb-mount-list" style="max-height:300px; overflow-y:auto;"></div>
@@ -680,103 +678,101 @@
                     </div>
                 </div>
 
-                <div id="sub-page-visual" class="sub-page" style="background: #F2F2F7;">
-                    <div class="app-header" style="background: #fff;">
-                        <div style="height:calc(10px + env(safe-area-inset-top));"></div>
-                        <div class="header-content">
-                            <div class="header-left" onclick="event.stopPropagation(); closeSubPage('visual')"
-                                style="width: 40px; padding-left: 5px;">
-                                <svg viewBox="0 0 24 24" width="28" height="28">
-                                    <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
-                                </svg>
-                            </div>
-                            <div class="header-title"><span style="font-size:17px;font-weight:600;">头像与昵称</span></div>
-                            <div class="header-right" onclick="saveVisualSettings()">
-                                <span style="font-size:16px;color:var(--theme-purple);font-weight:600;">完成</span>
-                            </div>
+            </div>
+
+            <div id="sub-page-visual" class="sub-page" style="background: #F2F2F7;">
+                <div class="app-header" style="background: #fff;">
+                    <div style="height:calc(10px + env(safe-area-inset-top));"></div>
+                    <div class="header-content">
+                        <div class="header-left" onclick="event.stopPropagation(); closeSubPage('visual')"
+                            style="width: 40px; padding-left: 5px;">
+                            <svg viewBox="0 0 24 24" width="28" height="28">
+                                <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                            </svg>
                         </div>
-                    </div>
-
-                    <div class="app-body" style="padding-top: 10px;">
-
-                        <div style="margin: 10px 0 8px 24px; font-size:13px; color:#888;">选择要修改的对象</div>
-
-                        <div
-                            style="background: #fff; border-radius: 12px; margin: 0 16px 20px 16px; padding: 15px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-                            <div id="visual-target-container" class="visual-target-list" style="padding: 10px 16px;">
-                            </div>
-                        </div>
-
-                        <div
-                            style="background: #fff; border-radius: 12px; margin: 0 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
-
-                            <div style="display:flex; justify-content:center; margin-bottom:20px;">
-                                <div style="position:relative;">
-                                    <div id="visual-preview"
-                                        style="width:100px; height:100px; background:#eee; border-radius:50%; background-size:cover; background-position:center; border: 4px solid #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
-                                    </div>
-                                    <div onclick="document.getElementById('visual-file-input').click()"
-                                        style="position:absolute; bottom:0; right:0; width:32px; height:32px; background:var(--theme-purple); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; border:2px solid #fff; cursor:pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
-                                        <svg viewBox="0 0 24 24" width="18" height="18" fill="white">
-                                            <path
-                                                d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
-                                        </svg>
-                                    </div>
-                                    <input type="file" id="visual-file-input" hidden accept="image/*"
-                                        onchange="handleVisualAvatarFile(this)">
-                                </div>
-                            </div>
-
-                            <div style="text-align:center; font-size:18px; font-weight:600; margin-bottom:25px; color:#333;"
-                                id="visual-target-name">未知</div>
-
-                            <label class="setting-label">显示昵称 (仅在本会话生效)</label>
-                            <div class="input-wrapper">
-                                <input type="text" id="visual-alias-input" class="setting-input" placeholder="默认为原名">
-                            </div>
-
-                            <div class="setting-row" style="padding: 10px 0; border-bottom: 1px solid #f9f9f9;">
-                                <div class="ios-text-box">
-                                    <div class="ios-title" style="font-size:15px;">头像形状</div>
-                                </div>
-                                <div class="shape-selector">
-                                    <div id="shape-circle" class="shape-option active"
-                                        onclick="setVisualShape('circle')">圆形</div>
-                                    <div id="shape-square" class="shape-option" onclick="setVisualShape('square')">圆角
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div class="setting-row" style="padding: 15px 0; border-bottom: 1px solid #f9f9f9;">
-                                <div class="ios-text-box">
-                                    <div class="ios-title" style="font-size:15px;">头像大小</div>
-                                </div>
-                                <div style="display:flex; align-items:center; width: 140px;">
-                                    <input type="range" id="visual-size-slider" class="morandi-slider" min="30" max="60"
-                                        step="2" oninput="updateVisualSizeVal(this.value)">
-                                    <span id="visual-size-val"
-                                        style="width:40px; text-align:right; font-size:12px; color:#888;">40px</span>
-                                </div>
-                            </div>
-
-                            <div class="setting-row" style="padding: 10px 0; border-bottom: none;">
-                                <div class="ios-text-box">
-                                    <div class="ios-title" style="font-size:15px;">显示头像</div>
-                                </div>
-                                <label class="ios-switch">
-                                    <input type="checkbox" id="visual-show-switch" checked
-                                        onchange="toggleVisualVisibility(this)">
-                                    <span class="slider"></span>
-                                </label>
-                            </div>
-                        </div>
-
-                        <div style="padding:20px; text-align:center; color:#999; font-size:12px;">
-                            设置仅对当前设备上的当前会话生效
+                        <div class="header-title"><span style="font-size:17px;font-weight:600;">头像与昵称</span></div>
+                        <div class="header-right" onclick="saveVisualSettings()">
+                            <span style="font-size:16px;color:var(--theme-purple);font-weight:600;">完成</span>
                         </div>
                     </div>
                 </div>
 
+                <div class="app-body" style="padding-top: 10px;">
+                    <div style="margin: 10px 0 8px 24px; font-size:13px; color:#888;">选择要修改的对象</div>
+
+                    <div
+                        style="background: #fff; border-radius: 12px; margin: 0 16px 20px 16px; padding: 15px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                        <div id="visual-target-container" class="visual-target-list" style="padding: 10px 16px;">
+                        </div>
+                    </div>
+
+                    <div
+                        style="background: #fff; border-radius: 12px; margin: 0 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+
+                        <div style="display:flex; justify-content:center; margin-bottom:20px;">
+                            <div style="position:relative;">
+                                <div id="visual-preview"
+                                    style="width:100px; height:100px; background:#eee; border-radius:50%; background-size:cover; background-position:center; border: 4px solid #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                                </div>
+                                <div onclick="document.getElementById('visual-file-input').click()"
+                                    style="position:absolute; bottom:0; right:0; width:32px; height:32px; background:var(--theme-purple); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; border:2px solid #fff; cursor:pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+                                    <svg viewBox="0 0 24 24" width="18" height="18" fill="white">
+                                        <path
+                                            d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                                    </svg>
+                                </div>
+                                <input type="file" id="visual-file-input" hidden accept="image/*"
+                                    onchange="handleVisualAvatarFile(this)">
+                            </div>
+                        </div>
+
+                        <div style="text-align:center; font-size:18px; font-weight:600; margin-bottom:25px; color:#333;"
+                            id="visual-target-name">未知</div>
+
+                        <label class="setting-label">显示昵称 (仅在本会话生效)</label>
+                        <div class="input-wrapper">
+                            <input type="text" id="visual-alias-input" class="setting-input" placeholder="默认为原名">
+                        </div>
+
+                        <div class="setting-row" style="padding: 10px 0; border-bottom: 1px solid #f9f9f9;">
+                            <div class="ios-text-box">
+                                <div class="ios-title" style="font-size:15px;">头像形状</div>
+                            </div>
+                            <div class="shape-selector">
+                                <div id="shape-circle" class="shape-option active" onclick="setVisualShape('circle')">圆形
+                                </div>
+                                <div id="shape-square" class="shape-option" onclick="setVisualShape('square')">圆角</div>
+                            </div>
+                        </div>
+
+                        <div class="setting-row" style="padding: 15px 0; border-bottom: 1px solid #f9f9f9;">
+                            <div class="ios-text-box">
+                                <div class="ios-title" style="font-size:15px;">头像大小</div>
+                            </div>
+                            <div style="display:flex; align-items:center; width: 140px;">
+                                <input type="range" id="visual-size-slider" class="morandi-slider" min="30" max="60"
+                                    step="2" oninput="updateVisualSizeVal(this.value)">
+                                <span id="visual-size-val"
+                                    style="width:40px; text-align:right; font-size:12px; color:#888;">40px</span>
+                            </div>
+                        </div>
+
+                        <div class="setting-row" style="padding: 10px 0; border-bottom: none;">
+                            <div class="ios-text-box">
+                                <div class="ios-title" style="font-size:15px;">显示头像</div>
+                            </div>
+                            <label class="ios-switch">
+                                <input type="checkbox" id="visual-show-switch" checked
+                                    onchange="toggleVisualVisibility(this)">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <div style="padding:20px; text-align:center; color:#999; font-size:12px;">
+                        设置仅对当前设备上的当前会话生效
+                    </div>
+                </div>
             </div>
         </div>
 
