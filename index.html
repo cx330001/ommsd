@@ -36,6 +36,15 @@
                     </div>
                     <span class="label">设置</span>
                 </div>
+                <div class="desktop-app-icon" onclick="openApp('worldbook')">
+                    <div class="icon-bg-desktop" style="background: #E8C1C6;">
+                        <svg viewBox="0 0 24 24" width="32" height="32" fill="white">
+                            <path
+                                d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z" />
+                        </svg>
+                    </div>
+                    <span class="label">世界书</span>
+                </div>
             </div>
         </div>
         <div id="app-settings" class="app-window" style="background: #F9F9FC;">
@@ -239,13 +248,18 @@
                     </div>
                     <div class="header-title conversation-header">
                         <span id="chat-title-text">聊天</span>
-                        <!-- 新增状态栏 -->
                         <div class="status-container">
                             <span id="chat-status-dot" class="status-dot"></span>
                             <span id="chat-status-text">离线</span>
                         </div>
                     </div>
-                    <div class="header-right" style="width:40px;"></div>
+                    <div class="header-right" onclick="openChatSettings()"
+                        style="width:40px; display:flex; justify-content:center;">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="#9B9ECE">
+                            <path
+                                d="M6 10c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm12 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2zm-6 0c-1.1 0-2 .9-2 2s.9 2 2 2 2-.9 2-2-.9-2-2-2z" />
+                        </svg>
+                    </div>
                 </div>
             </div>
 
@@ -501,6 +515,497 @@
                 </div>
 
                 <button class="btn-main" onclick="confirmAddRelation()">确定添加</button>
+            </div>
+        </div>
+        <div id="app-chat-settings" class="app-window" style="background: #F2F2F7;">
+            <div class="app-header" style="background: #fff;">
+                <div style="height:calc(10px + env(safe-area-inset-top));"></div>
+                <div class="header-content">
+                    <div class="header-left" onclick="closeApp('chat-settings')">
+                        <svg viewBox="0 0 24 24" width="28" height="28">
+                            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                        </svg>
+                    </div>
+                    <div class="header-title"><span style="font-size:17px;font-weight:600;">聊天设置</span></div>
+                    <div class="header-right" style="width:40px;"></div>
+                </div>
+            </div>
+
+            <div class="app-body">
+
+                <div style="margin: 20px 0 8px 20px; font-size:13px; color:#888;">外观</div>
+                <div class="ios-group">
+                    <div class="setting-row" onclick="openSubPage('visual')">
+                        <div class="ios-text-box">
+                            <div class="ios-title">头像与昵称</div>
+                        </div>
+                        <svg class="ios-arrow" viewBox="0 0 24 24">
+                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
+                        </svg>
+                    </div>
+                </div>
+
+                <div style="margin: 0 0 8px 20px; font-size:13px; color:#888;">记忆与设定</div>
+                <div class="ios-group">
+                    <div class="setting-row">
+                        <div class="ios-text-box">
+                            <div class="ios-title">短期记忆</div>
+                            <div class="ios-desc">携带的历史消息数量</div>
+                        </div>
+                        <div style="display:flex; align-items:center;">
+                            <input type="number" id="setting-context-limit" value="25" class="ios-value-input"
+                                onchange="saveContextLimit(this.value)">
+                            <span style="color:#8E8E93; font-size:15px; margin-left:4px;">条</span>
+                        </div>
+                    </div>
+
+                    <div class="setting-row" onclick="openWorldBookMountSelector()">
+                        <div class="ios-text-box">
+                            <div class="ios-title">世界书挂载</div>
+                            <div id="wb-mount-status" class="ios-desc">未挂载局部设定</div>
+                        </div>
+                        <svg class="ios-arrow" viewBox="0 0 24 24">
+                            <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
+                        </svg>
+                    </div>
+                </div>
+
+                <div style="margin: 0 0 8px 20px; font-size:13px; color:#888;">环境</div>
+                <div class="ios-group">
+                    <div class="setting-row">
+                        <div class="ios-text-box">
+                            <div class="ios-title">环境增强模式</div>
+                            <div class="ios-desc">实时注入时间、天气和时差</div>
+                        </div>
+                        <label class="ios-switch">
+                            <input type="checkbox" id="env-mode-switch" onchange="toggleEnvMode(this)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+
+                    <div id="env-settings-panel" style="display:none; background:#fff;">
+
+                        <div id="view-mode-single" class="city-info-box">
+                            <div class="flight-connector">
+                                <svg class="flight-path-svg" viewBox="0 0 300 100" preserveAspectRatio="none">
+                                    <path class="flight-line-bg" d="M 0,75 C 80,75 220,25 300,25" />
+                                    <path class="flight-line-dash" d="M 0,75 C 80,75 220,25 300,25" />
+                                </svg>
+                                <div class="plane-wrapper">
+                                    <svg viewBox="0 0 24 24" width="24" height="24">
+                                        <path
+                                            d="M21,16V14L13,9V3.5A1.5,1.5,0,0,0,11.5,2A1.5,1.5,0,0,0,10,3.5V9L2,14V16L10,13.5V19L8,20.5V22L11.5,21L15,22V20.5L13,19V13.5L21,16Z" />
+                                    </svg>
+                                </div>
+                            </div>
+
+                            <div class="city-card" onclick="openCityModal('user')">
+                                <div class="city-card-header">
+                                    <div class="city-icon-bg"><svg viewBox="0 0 24 24" width="20" height="20"
+                                            fill="#9B9ECE">
+                                            <path
+                                                d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                                        </svg></div>
+                                    <div class="city-label-group">
+                                        <div class="city-label-title">我的位置<svg class="verified-icon"
+                                                viewBox="0 0 24 24">
+                                                <path
+                                                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                                            </svg></div>
+                                        <div id="ui-user-fake" class="city-name-main">未设置</div>
+                                    </div>
+                                </div>
+                                <div id="ui-user-real" class="city-name-sub">映射: (空)</div>
+                                <div id="ui-user-weather" class="city-weather-info">--</div>
+                            </div>
+
+                            <div class="city-card" onclick="openCityModal('char')">
+                                <div class="city-card-header">
+                                    <div class="city-icon-bg" style="background:#F4F4FF;"><svg viewBox="0 0 24 24"
+                                            width="18" height="18" fill="#9B9ECE">
+                                            <path
+                                                d="M15 11V5l-3-3-3 3v2H3v14h18V11h-6zm-8 8H5v-2h2v2zm0-4H5v-2h2v2zm0-4H5V9h2v2zm6 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V9h2v2zm0-4h-2V5h2v2zm6 12h-2v-2h2v2zm0-4h-2v-2h2v2z" />
+                                        </svg></div>
+                                    <div class="city-label-group">
+                                        <div class="city-label-title">对方位置<svg class="verified-icon"
+                                                viewBox="0 0 24 24">
+                                                <path
+                                                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                                            </svg></div>
+                                        <div id="ui-char-fake" class="city-name-main">未设置</div>
+                                    </div>
+                                </div>
+                                <div id="ui-char-real" class="city-name-sub">映射: (空)</div>
+                                <div id="ui-char-weather" class="city-weather-info">--</div>
+                            </div>
+                        </div>
+
+                        <div id="view-mode-group" style="display:none; padding:16px;">
+                            <div class="city-card-wide" onclick="openCityModal('user')">
+                                <div class="city-card-header">
+                                    <div class="city-label-group">
+                                        <div class="city-label-title">我的当前位置 (群同步)<svg class="verified-icon"
+                                                viewBox="0 0 24 24" style="margin-left:6px;">
+                                                <path
+                                                    d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                                            </svg></div>
+                                        <div id="ui-user-fake-group" class="city-name-main"
+                                            style="font-size:18px; margin-top:2px;">未设置</div>
+                                    </div>
+                                </div>
+                                <div
+                                    style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; border-top:1px solid #f9f9f9; padding-top:8px;">
+                                    <div id="ui-user-real-group" class="city-name-sub">映射: (空)</div>
+                                    <div id="ui-user-weather-group" class="city-weather-info" style="color:#9B9ECE;">--
+                                    </div>
+                                </div>
+                            </div>
+                            <div style="font-size:12px; color:#999; margin:20px 0 10px 4px;">其他成员位置</div>
+                            <div id="env-group-list-container"></div>
+                        </div>
+
+                        <div style="padding:15px; font-size:12px; color:#999; line-height:1.5; text-align:center;">💡
+                            映射真实城市以获取实时天气</div>
+                    </div>
+                </div>
+
+                <div id="modal-wb-mount" class="modal-overlay" style="z-index: 310;">
+                    <div class="modal-card">
+                        <div class="close-modal"
+                            onclick="document.getElementById('modal-wb-mount').style.display='none'">×</div>
+                        <h3 style="margin-top:0;">选择局部设定</h3>
+                        <p style="font-size:12px;color:#999;margin-bottom:15px;">勾选要挂载到当前会话的世界书 (全局设定默认生效)</p>
+                        <div id="wb-mount-list" style="max-height:300px; overflow-y:auto;"></div>
+                        <button class="btn-main" onclick="saveWbMount()">保存挂载</button>
+                    </div>
+                </div>
+
+                <div id="sub-page-visual" class="sub-page" style="background: #F2F2F7;">
+                    <div class="app-header" style="background: #fff;">
+                        <div style="height:calc(10px + env(safe-area-inset-top));"></div>
+                        <div class="header-content">
+                            <div class="header-left" onclick="closeSubPage('visual')"
+                                style="width: 40px; padding-left: 5px;">
+                                <svg viewBox="0 0 24 24" width="28" height="28">
+                                    <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                                </svg>
+                            </div>
+                            <div class="header-title"><span style="font-size:17px;font-weight:600;">外观设置</span></div>
+                            <div class="header-right" onclick="saveVisualSettings()">
+                                <span style="font-size:16px;color:var(--theme-purple);font-weight:600;">完成</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="app-body" style="padding-top: 10px;">
+
+                        <div style="margin: 10px 0 8px 24px; font-size:13px; color:#888;">选择要修改的对象</div>
+
+                        <div
+                            style="background: #fff; border-radius: 12px; margin: 0 16px 20px 16px; padding: 15px 0; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+                            <div id="visual-target-container" class="visual-target-list" style="padding: 10px 16px;">
+                            </div>
+                        </div>
+
+                        <div
+                            style="background: #fff; border-radius: 12px; margin: 0 16px; padding: 20px; box-shadow: 0 1px 3px rgba(0,0,0,0.05);">
+
+                            <div style="display:flex; justify-content:center; margin-bottom:20px;">
+                                <div style="position:relative;">
+                                    <div id="visual-preview"
+                                        style="width:100px; height:100px; background:#eee; border-radius:50%; background-size:cover; background-position:center; border: 4px solid #fff; box-shadow: 0 4px 15px rgba(0,0,0,0.1);">
+                                    </div>
+                                    <div onclick="document.getElementById('visual-file-input').click()"
+                                        style="position:absolute; bottom:0; right:0; width:32px; height:32px; background:var(--theme-purple); border-radius:50%; display:flex; align-items:center; justify-content:center; color:#fff; border:2px solid #fff; cursor:pointer; box-shadow: 0 2px 6px rgba(0,0,0,0.15);">
+                                        <svg viewBox="0 0 24 24" width="18" height="18" fill="white">
+                                            <path
+                                                d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+                                        </svg>
+                                    </div>
+                                    <input type="file" id="visual-file-input" hidden accept="image/*"
+                                        onchange="handleVisualAvatarFile(this)">
+                                </div>
+                            </div>
+
+                            <div style="text-align:center; font-size:18px; font-weight:600; margin-bottom:25px; color:#333;"
+                                id="visual-target-name">未知</div>
+
+                            <label class="setting-label">显示昵称 (仅在本会话生效)</label>
+                            <div class="input-wrapper">
+                                <input type="text" id="visual-alias-input" class="setting-input" placeholder="默认为原名">
+                            </div>
+
+                            <div class="setting-row" style="padding: 10px 0; border-bottom: 1px solid #f9f9f9;">
+                                <div class="ios-text-box">
+                                    <div class="ios-title" style="font-size:15px;">头像形状</div>
+                                </div>
+                                <div class="shape-selector">
+                                    <div id="shape-circle" class="shape-option active"
+                                        onclick="setVisualShape('circle')">圆形</div>
+                                    <div id="shape-square" class="shape-option" onclick="setVisualShape('square')">圆角
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="setting-row" style="padding: 15px 0; border-bottom: 1px solid #f9f9f9;">
+                                <div class="ios-text-box">
+                                    <div class="ios-title" style="font-size:15px;">头像大小</div>
+                                </div>
+                                <div style="display:flex; align-items:center; width: 140px;">
+                                    <input type="range" id="visual-size-slider" class="morandi-slider" min="30" max="60"
+                                        step="2" oninput="updateVisualSizeVal(this.value)">
+                                    <span id="visual-size-val"
+                                        style="width:40px; text-align:right; font-size:12px; color:#888;">40px</span>
+                                </div>
+                            </div>
+
+                            <div class="setting-row" style="padding: 10px 0; border-bottom: none;">
+                                <div class="ios-text-box">
+                                    <div class="ios-title" style="font-size:15px;">显示头像</div>
+                                </div>
+                                <label class="ios-switch">
+                                    <input type="checkbox" id="visual-show-switch" checked
+                                        onchange="toggleVisualVisibility(this)">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </div>
+
+                        <div style="padding:20px; text-align:center; color:#999; font-size:12px;">
+                            设置仅对当前设备上的当前会话生效
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div id="modal-city-select" class="modal-overlay" style="z-index: 300;">
+            <div class="modal-card">
+                <div class="close-modal" onclick="document.getElementById('modal-city-select').style.display='none'">×
+                </div>
+                <h3 style="margin-top:0;">定位设置</h3>
+
+                <label class="setting-label">显示名称 (Roleplay用)</label>
+                <div class="input-wrapper">
+                    <input type="text" id="city-fake-input" class="setting-input" placeholder="例如：哥谭市 / 魔法学院">
+                </div>
+
+                <label class="setting-label">真实映射城市 (API查询用)</label>
+                <div class="input-wrapper">
+                    <input type="text" id="city-real-input" class="setting-input"
+                        placeholder="例如：New York / London / Beijing">
+                </div>
+                <p style="font-size:12px;color:#999;margin-bottom:15px;">请填写英文城市名或拼音 (如 Shanghai)，以便API准确识别。</p>
+
+                <button class="btn-main" onclick="saveCitySelection()">保存设定</button>
+            </div>
+        </div>
+        <div id="app-worldbook" class="app-window" style="background: #F9F9FC;">
+            <div class="app-header">
+                <div style="height:calc(10px + env(safe-area-inset-top));"></div>
+                <div class="header-content">
+                    <div class="header-left" onclick="closeApp('worldbook')">
+                        <svg viewBox="0 0 24 24" width="28" height="28">
+                            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                        </svg>
+                    </div>
+                    <div class="header-title"><span style="font-size:17px;font-weight:600;">世界书</span></div>
+                    <div class="header-right" style="gap:15px; padding-right:10px;">
+                        <div id="wb-btn-select" onclick="toggleWbSelectMode()"
+                            style="cursor:pointer; display:flex; color:var(--theme-purple);">
+                            <svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor">
+                                <path
+                                    d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z" />
+                            </svg>
+                        </div>
+
+                        <div id="wb-btn-add" onclick="openWorldBookEdit()" style="cursor:pointer; display:flex;">
+                            <svg viewBox="0 0 24 24" width="26" height="26" fill="#9B9ECE">
+                                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="app-body" style="padding: 10px 16px;">
+                <div class="avatar-tabs" style="margin-bottom:10px;">
+                    <div class="avatar-tab active" id="wb-tab-global" onclick="switchWorldBookTab('global')">全局设定</div>
+                    <div class="avatar-tab" id="wb-tab-local" onclick="switchWorldBookTab('local')">局部设定</div>
+                </div>
+
+                <div id="wb-category-bar" class="category-scroll-container">
+                </div>
+
+                <div id="worldbook-list-container" style="padding-bottom: 80px;"></div>
+            </div>
+
+            <div id="wb-bottom-bar" class="wb-bottom-bar">
+                <div class="wb-bar-btn" onclick="openWbMoveModal()">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="#666">
+                        <path
+                            d="M10 9h4V6h3l-5-5-5 5h3v3zm-1 1H6V7l-5 5 5 5v-3h3v-4zm14 2l-5-5v3h-3v4h3v3l5-5zm-9 3h-4v3H7l5 5 5-5h-3v-3z" />
+                    </svg>
+                    <span>移动分类</span>
+                </div>
+                <div class="wb-bar-btn danger" onclick="batchDeleteWb()">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#FF3B30" stroke-width="2">
+                        <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                    </svg>
+                    <span>删除</span>
+                </div>
+            </div>
+        </div>
+
+        <div id="modal-cat-mgr" class="modal-overlay" style="z-index: 400;">
+            <div class="modal-card">
+                <div class="close-modal" onclick="document.getElementById('modal-cat-mgr').style.display='none'">×</div>
+                <h3 style="margin-top:0;">分类管理</h3>
+
+                <div style="display:flex; gap:10px; margin-bottom:15px;">
+                    <input type="text" id="new-cat-name" class="setting-input" placeholder="新分类名称"
+                        style="height:40px; margin:0;">
+                    <button class="btn-main" onclick="addNewCategory()"
+                        style="width:80px; margin:0; padding:0;">添加</button>
+                </div>
+
+                <div style="font-size:12px;color:#999;margin-bottom:8px;">删除分类时，其下内容会自动移入默认分类</div>
+
+                <div id="cat-mgr-list"
+                    style="max-height:300px; overflow-y:auto; border:1px solid #f0f0f0; border-radius:12px;">
+                </div>
+            </div>
+        </div>
+
+        <div id="modal-wb-move" class="modal-overlay" style="z-index: 410;">
+            <div class="modal-card">
+                <div class="close-modal" onclick="document.getElementById('modal-wb-move').style.display='none'">×</div>
+                <h3>移动到...</h3>
+                <div id="move-cat-list" style="max-height:300px; overflow-y:auto;">
+                </div>
+            </div>
+        </div>
+
+        <div id="app-worldbook-edit" class="app-window" style="background: #F9F9FC;">
+            <div class="app-header">
+                <div style="height:calc(10px + env(safe-area-inset-top));"></div>
+                <div class="header-content">
+                    <div class="header-left" onclick="closeApp('worldbook-edit')">
+                        <svg viewBox="0 0 24 24" width="28" height="28">
+                            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                        </svg>
+                    </div>
+
+                    <div class="header-title"><span id="wb-edit-title"
+                            style="font-size:17px;font-weight:600;">编辑词条</span></div>
+
+                    <div class="header-right"
+                        style="width: auto; min-width: 40px; display: flex; align-items: center; justify-content: flex-end; gap: 16px; padding-right: 10px;">
+                        <div id="btn-del-wb" onclick="deleteWorldBookEntry()"
+                            style="display:none; cursor:pointer; padding: 4px;">
+                            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#B26B61"
+                                stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 6h18"></path>
+                                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                                <line x1="10" y1="11" x2="10" y2="17"></line>
+                                <line x1="14" y1="11" x2="14" y2="17"></line>
+                            </svg>
+                        </div>
+
+                        <div onclick="saveWorldBookEntry()" style="cursor:pointer; display:flex;">
+                            <svg viewBox="0 0 24 24" width="26" height="26" fill="#9B9ECE">
+                                <path d="M9 16.17L4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="app-body" style="padding: 20px 16px;">
+                <div class="wb-edit-type-segment">
+                    <div id="wb-edit-segment-global" class="wb-edit-segment-item active"
+                        onclick="switchWbEditType('global')">全局设定</div>
+                    <div id="wb-edit-segment-local" class="wb-edit-segment-item" onclick="switchWbEditType('local')">
+                        局部设定</div>
+                </div>
+                <label class="setting-label">词条名称</label>
+                <div class="input-wrapper">
+                    <input type="text" id="wb-name" class="setting-input" placeholder="例如：魔法原理 / 家族历史">
+                </div>
+                <label class="setting-label">所属分类</label>
+                <div class="input-wrapper">
+                    <select id="wb-category-select" class="setting-input" style="background-image:none;">
+                    </select>
+                </div>
+                <label class="setting-label">触发机制</label>
+                <div class="settings-card" style="margin:0 0 16px 0;">
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <h4>常驻激活 (Constant)</h4>
+                            <p>无需触发词，永远注入到Prompt中</p>
+                        </div>
+                        <label class="ios-switch">
+                            <input type="checkbox" id="wb-constant" onchange="toggleWbKeywords(this)">
+                            <span class="slider"></span>
+                        </label>
+                    </div>
+                </div>
+
+                <div id="wb-keyword-group">
+                    <label class="setting-label">触发关键词 (英文逗号分隔)</label>
+                    <div class="input-wrapper">
+                        <input type="text" id="wb-keys" class="setting-input" placeholder="例如：魔法, 吟唱, mana">
+                    </div>
+                </div>
+
+                <label class="setting-label">内容设定 (Content)</label>
+                <div class="input-wrapper">
+                    <textarea id="wb-content" class="setting-input" style="height:150px; line-height:1.5;"
+                        placeholder="输入该词条的具体设定内容..."></textarea>
+                </div>
+
+                <label class="setting-label">高级选项</label>
+                <div class="settings-card" style="margin:0;">
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <h4>注入位置</h4>
+                            <p>影响AI认知的优先级</p>
+                        </div>
+                        <select id="wb-position"
+                            style="border:none; bg:transparent; text-align:right; font-size:14px; color:#666;">
+                            <option value="top">顶部</option>
+                            <option value="bottom">底部</option>
+                        </select>
+                    </div>
+                    <div class="settings-item">
+                        <div class="settings-text">
+                            <h4>注入权重 (Order)</h4>
+                            <p>数字越大越靠后</p>
+                        </div>
+                        <input type="number" id="wb-order" value="100"
+                            style="width:50px; border:none; text-align:right;">
+                    </div>
+                </div>
+
+
+            </div>
+        </div>
+        <div id="msg-context-menu-overlay" class="msg-menu-overlay" style="display: none;" onclick="hideMsgMenu()">
+            <div id="msg-menu-box" class="msg-menu-box">
+                <div class="msg-menu-item" onclick="handleCopyMsg()">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="#666">
+                        <path
+                            d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+                    </svg>
+                    <span>复制</span>
+                </div>
+                <div class="msg-menu-line"></div>
+                <div class="msg-menu-item danger" onclick="handleDeleteMsg()">
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="#FF3B30">
+                        <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+                    </svg>
+                    <span>删除</span>
+                </div>
             </div>
         </div>
     </div>

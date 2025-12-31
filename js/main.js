@@ -7,69 +7,131 @@ window.openApp = function (id) {
     const app = document.getElementById('app-' + id);
     if (app) {
         app.classList.add('open');
-        if (id === 'chat') {
-            // 这里加个判断，防止 dbSystem 没加载时报错
-            if (window.dbSystem) {
-                // 修改开始：打开数据库后，不仅渲染UI，还要检查当前Tab
-                window.dbSystem.open().then(() => {
-                    // 1. 渲染基础界面 (个人中心、消息列表等)
-                    window.renderChatUI();
 
-                    // 2. [关键修复] 检查当前是否停留在"好友"标签页
-                    // 如果是，必须重新触发 renderContacts，因为 cleanUpMemory 把它清空了
+        // 1. 如果打开的是聊天主页
+        if (id === 'chat') {
+            if (window.dbSystem) {
+                window.dbSystem.open().then(() => {
+                    window.renderChatUI();
+                    // 检查当前是否在好友页，如果是则刷新好友
                     const contactTab = document.getElementById('tab-contacts');
                     if (contactTab && contactTab.classList.contains('active')) {
-                        // 重新渲染好友列表
                         if (window.renderContacts) window.renderContacts();
                     }
                 });
-                // 修改结束
-            } else {
-                console.error("数据库未加载，请检查 index.html 是否引入了 dexie.js 和 db.js");
+            }
+        }
+
+        // 2. [新增] 如果打开的是世界书，强制刷新一次列表
+        if (id === 'worldbook') {
+            // 默认切到全局 (global)，你也可以改为上次记住的 Tab
+            if (typeof switchWorldBookTab === 'function') {
+                // 模拟点击“全局设定”，加载数据
+                switchWorldBookTab('global');
             }
         }
     }
 };
+
+/* js/main.js - 替换 window.closeApp 部分 */
 
 window.closeApp = function (id) {
     const app = document.getElementById('app-' + id);
     if (app) {
         app.classList.remove('open');
 
-        // 针对 'chat' (主页) 的清理
-        if (id === 'chat') {
+        // [核心优化] 针对 'conversation' (聊天详情) 的清理与恢复
+        if (id === 'conversation') {
+            // 1. 【立刻】重绘消息列表 (不要等动画)
+            const msgsTab = document.getElementById('tab-msgs');
+            if (msgsTab && msgsTab.classList.contains('active')) {
+                // console.log("预渲染消息列表，消除视觉延迟...");
+                if (window.renderChatUI) window.renderChatUI();
+            }
+        }
+
+        // [补全] 针对 'contact-edit' (联系人编辑页) 的清理
+        if (id === 'contact-edit') {
             setTimeout(() => {
-                if (window.cleanUpMemory) window.cleanUpMemory();
+                // 1. 释放图片 Blob 内存 (最重要的一步，防止内存泄漏)
+                const previewImg = document.getElementById('c-preview-file');
+                if (previewImg && previewImg.src && previewImg.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(previewImg.src);
+                    previewImg.src = ''; // 断开 DOM 引用
+                }
+
+                // 2. 重置表单输入框 (调用 main.js 下方已有的重置函数)
+                if (typeof resetContactForm === 'function') {
+                    resetContactForm();
+                }
+
+                // 3. 清理全局临时变量
+                window.currentContactEditId = null;
+                window.tempContactAvatar = null;
+
+                // 4. 清空暂存的关系网数据
+                if (typeof tempRelations !== 'undefined') {
+                    tempRelations = [];
+                }
+
+                // 5. 清空关系网 DOM (下次打开时由 openContactPage 重新渲染)
+                const relContainer = document.getElementById('contact-relation-container');
+                if (relContainer) relContainer.innerHTML = '';
+
+                console.log("联系人编辑页资源已释放");
             }, 400);
         }
 
-        // [核心优化] 针对 'conversation' (聊天详情) 的清理
-        if (id === 'conversation') {
+        // [补充] 针对 'persona-mgr' (我的身份管理) 的清理，逻辑类似
+        if (id === 'persona-mgr') {
             setTimeout(() => {
-                // 1. 销毁虚拟列表实例 (移除 scroll 监听，清空 JS 数组)
-                // 这一步最重要，释放 JS 内存
-                if (window.chatScroller) {
-                    window.chatScroller.destroy();
-                    window.chatScroller = null;
+                // 这里的图片预览 ID 是 preview-file
+                const pPreview = document.getElementById('preview-file');
+                if (pPreview && pPreview.src && pPreview.src.startsWith('blob:')) {
+                    URL.revokeObjectURL(pPreview.src);
+                    pPreview.src = '';
                 }
+                // 如果在列表页，清理列表 DOM
+                const list = document.getElementById('persona-list-container');
+                if (list) list.innerHTML = '';
 
-                // 2. 清空 DOM (移除节点)
-                // 这一步释放渲染层内存
-                const body = document.getElementById('chat-body');
-                if (body) body.innerHTML = '';
-
-                // 3. 释放当前的会话 ID
-                window.currentActiveChatId = null;
-
-                console.log("聊天界面资源已彻底释放");
-            }, 400); // 等 400ms 是为了让滑出动画播完，避免视觉闪烁
+                console.log("身份管理页资源已释放");
+            }, 400);
+        }
+        if (id === 'worldbook') {
+            // 延时一点清理，避免关闭动画还没放完就白屏
+            setTimeout(() => {
+                if (window.cleanWorldBookMemory) window.cleanWorldBookMemory();
+            }, 300);
         }
     }
 };
 
 // --- 2. 底部 Tab 切换 ---
+// --- 2. 底部 Tab 切换 (极致性能版) ---
 window.switchTab = function (name, el) {
-    // 1. UI 状态切换 (Active class)
+    // 1. 获取当前处于激活状态的 Tab 名称 (用于决定清理谁)
+    const currentActiveTab = document.querySelector('.tab-content.active');
+    const currentId = currentActiveTab ? currentActiveTab.id.replace('tab-', '') : null;
+
+    // 如果点击的是当前 Tab，什么都不做
+    if (currentId === name) return;
+
+    // ============================================
+    //  A. 离开旧 Tab -> 立即销毁内存
+    // ============================================
+    if (currentId === 'msgs') {
+        window.cleanMsgListMemory(); // 销毁消息列表 DOM + Blob
+    } else if (currentId === 'contacts') {
+        window.cleanContactMemory(); // 销毁好友列表 DOM + VirtualScroller
+    } else if (currentId === 'me') {
+        // 个人中心如果比较简单，可以不清，或者也清掉
+        document.getElementById('me-content-placeholder').innerHTML = '';
+    }
+
+    // ============================================
+    //  B. 切换 UI 状态
+    // ============================================
     document.querySelectorAll('.tab-item').forEach(e => e.classList.remove('active'));
     el.classList.add('active');
 
@@ -79,49 +141,34 @@ window.switchTab = function (name, el) {
     const targetTab = document.getElementById('tab-' + name);
     targetTab.classList.add('active');
 
-    // 2. 更改标题
+    // 更改标题
     const titles = { 'msgs': '消息', 'contacts': '好友', 'moment': '发现', 'me': '个人中心' };
     const titleEl = document.getElementById('app-title-text');
     if (titleEl) titleEl.innerText = titles[name];
 
-    // 3. 右上角按钮逻辑
+    // 右上角按钮
     const addBtn = document.getElementById('btn-add-contact');
     if (addBtn) addBtn.style.display = (name === 'contacts') ? 'flex' : 'none';
 
     // ============================================
-    //  严格内存管理：离开即销毁，进入即渲染
+    //  C. 进入新 Tab -> 重新渲染
     // ============================================
-
-    // A. 如果切走的不是好友页，清理好友列表 (销毁虚拟列表实例)
-    if (name !== 'contacts') {
-        const contactContainer = document.getElementById('contact-list-dynamic');
-        if (contactContainer) contactContainer.innerHTML = ''; // 清空 DOM
-        if (window.virtualScroller) { // 全局变量在 render.js 定义
-            // 调用我们在 render.js 里写的销毁方法
-            // 假设 render.js 暴露了 virtualScroller 变量，
-            // 或者你可以直接调用 cleanUpMemory 但那会清空所有。
-            // 这里建议直接操作 DOM 清空，render.js 的 renderContacts 会处理重建。
-            window.cleanUpMemory(); // 简单粗暴：切 Tab 就把所有缓存清了
-        }
+    if (name === 'msgs') {
+        // 重新从数据库读取并渲染消息列表
+        if (window.renderChatUI) window.renderChatUI();
     }
-
-    // B. 根据进入的 Tab 重新渲染
-    if (name === 'contacts') {
+    else if (name === 'contacts') {
         // 重新构建虚拟列表
         if (window.renderContacts) window.renderContacts();
     }
-    else if (name === 'msgs') {
-        // 重新渲染消息列表
-        if (window.renderChatUI) window.renderChatUI();
-    }
     else if (name === 'me') {
-        // 重新渲染个人中心（因为 cleanUpMemory 可能把它清了）
-        // 你可能需要把 renderChatUI 里的渲染逻辑拆分，
-        // 但目前 renderChatUI 包含了 "我" 和 "消息"，所以调用它没问题。
+        // "我"的卡片其实是在 renderChatUI 里一起渲染的
+        // 为了复用，这里可以调用 renderChatUI，或者把渲染我的逻辑拆出来
+        // 简单起见，直接调 renderChatUI，它会把消息列表也画出来(虽然不可见但影响不大)，
+        // 或者你可以去 render.js 把渲染 Me 和 渲染 List 拆开。
+        // 现状：调用 renderChatUI 没问题。
         if (window.renderChatUI) window.renderChatUI();
     }
-
-    // "发现" 页暂时没有动态数据，静态写死即可，不需要重渲染
 };
 
 // --- 3. 个人身份 (Persona) 相关逻辑 ---
@@ -579,7 +626,7 @@ window.sendMessage = async function () {
         lastMsg: text,
         updated: new Date()
     });
-
+    if (window.renderChatUI) window.renderChatUI();
     input.value = '';
 };
 
@@ -633,7 +680,17 @@ window.closeSubPage = function (pageName) {
     const el = document.getElementById('sub-page-' + pageName);
     if (el) {
         el.classList.remove('active');
-        // 关闭时清理一下下拉列表
+
+        // --- [新增] 关闭视觉设置页时，立即释放内存 ---
+        if (pageName === 'visual') {
+            setTimeout(() => {
+                cleanVisualPageMemory();
+                // 清空列表DOM，防止残影
+                document.getElementById('visual-target-container').innerHTML = '';
+            }, 300); // 等动画播完再清
+        }
+        // -------------------------------------------
+
         setTimeout(() => {
             const list = document.getElementById('model-list-container');
             if (list) {
@@ -909,31 +966,96 @@ window.triggerAIResponse = async function (btnElement) {
 
     try {
         const chat = await window.dbSystem.chats.get(window.currentActiveChatId);
-        const currentUser = await window.dbSystem.getCurrent();
 
-        // --- 核心分流：是群聊还是单聊？ ---
-        // 判定标准：有群名 OR 成员超过2人
-        const isGroupChat = (chat.name || chat.members.length > 2);
+        // === 平行世界线隔离 ===
+        let chatSpecificUser = null;
+        for (const mid of chat.members) {
+            const char = await window.dbSystem.getChar(mid);
+            if (char && char.type === 1) {
+                chatSpecificUser = char;
+                break;
+            }
+        }
 
-        if (isGroupChat) {
-            console.log("进入群聊模式 (导演模式)");
-            await handleGroupChat(chat, currentUser, hostRec, modelRec, dbKeys, tempRec);
+        // 兜底
+        if (!chatSpecificUser) {
+            // console.warn("当前聊天未绑定特定User身份，回退到全局身份"); // 调试日志已注释
+            chatSpecificUser = await window.dbSystem.getCurrent();
+        }
+
+        // console.log(`[平行世界] 当前对话绑定的主角是: ${chatSpecificUser.name} (ID: ${chatSpecificUser.id})`); // 调试日志已注释
+
+        const isGroup = (chat.name || chat.members.length > 2);
+
+        if (isGroup) {
+            await handleGroupChat(chat, chatSpecificUser, hostRec, modelRec, dbKeys, tempRec);
         } else {
-            console.log("进入单聊模式 (沉浸模式)");
-            await handlePrivateChat(chat, currentUser, hostRec, modelRec, dbKeys, tempRec);
+            await handlePrivateChat(chat, chatSpecificUser, hostRec, modelRec, dbKeys, tempRec);
         }
 
     } catch (e) {
         if (typeof chatScroller !== 'undefined' && chatScroller) chatScroller.removeLast();
-        console.error(e);
+        console.error(e); // 报错信息建议保留，万一出问题方便排查
+        alert("AI请求中断: " + e.message);
+    } finally {
+        btnElement.classList.remove('loading');
+    }
+}; window.triggerAIResponse = async function (btnElement) {
+    if (!window.currentActiveChatId) return alert("当前没有打开的聊天窗口");
+    if (btnElement.classList.contains('loading')) return;
+
+    // --- 基础配置 ---
+    const hostRec = await window.dbSystem.settings.get('apiHost');
+    const modelRec = await window.dbSystem.settings.get('apiModel');
+    const keyRec = await window.dbSystem.settings.get('apiKey');
+    const tempRec = await window.dbSystem.settings.get('apiTemperature');
+
+    if (!hostRec || !hostRec.value) return alert("请配置 API Host");
+    const dbKeys = keyRec ? keyRec.value.split(',').map(k => k.trim()).filter(k => k) : [];
+    if (dbKeys.length === 0) return alert("请配置 API Key");
+
+    btnElement.classList.add('loading');
+
+    try {
+        const chat = await window.dbSystem.chats.get(window.currentActiveChatId);
+
+        // === 平行世界线隔离 ===
+        let chatSpecificUser = null;
+        for (const mid of chat.members) {
+            const char = await window.dbSystem.getChar(mid);
+            if (char && char.type === 1) {
+                chatSpecificUser = char;
+                break;
+            }
+        }
+
+        // 兜底
+        if (!chatSpecificUser) {
+            // console.warn("当前聊天未绑定特定User身份，回退到全局身份"); // 调试日志已注释
+            chatSpecificUser = await window.dbSystem.getCurrent();
+        }
+
+        // console.log(`[平行世界] 当前对话绑定的主角是: ${chatSpecificUser.name} (ID: ${chatSpecificUser.id})`); // 调试日志已注释
+
+        const isGroup = (chat.name || chat.members.length > 2);
+
+        if (isGroup) {
+            await handleGroupChat(chat, chatSpecificUser, hostRec, modelRec, dbKeys, tempRec);
+        } else {
+            await handlePrivateChat(chat, chatSpecificUser, hostRec, modelRec, dbKeys, tempRec);
+        }
+
+    } catch (e) {
+        if (typeof chatScroller !== 'undefined' && chatScroller) chatScroller.removeLast();
+        console.error(e); // 报错信息建议保留，万一出问题方便排查
         alert("AI请求中断: " + e.message);
     } finally {
         btnElement.classList.remove('loading');
     }
 };
-// [新增] 处理群聊：AI 导演模式
-async function handleGroupChat(chat, currentUser, hostRec, modelRec, dbKeys, tempRec) {
+async function handleGroupChat(chat, userPersona, hostRec, modelRec, dbKeys, tempRec) {
     const messages = await window.dbSystem.getMessages(chat.id);
+    const limit = chat.historyLimit || 20;
 
     // 1. 准备群成员数据
     const memberData = [];
@@ -942,223 +1064,245 @@ async function handleGroupChat(chat, currentUser, hostRec, modelRec, dbKeys, tem
     for (const uid of chat.members) {
         const u = await window.dbSystem.getChar(uid);
         if (u) {
+            const isMe = (u.id === userPersona.id);
             memberData.push({
                 name: u.name,
                 desc: u.desc || "无特殊设定",
-                isMe: (u.id === currentUser.id)
+                isMe: isMe
             });
             nameToIdMap[u.name] = u.id;
         }
     }
 
-    // 2. 构建导演 System Prompt (强制多条回复)
+    // 2. 注入世界书
+    const historyForScan = messages.slice(-limit).map(m => ({ content: m.text }));
+    let worldInfo = { top: "", bottom: "" };
+    try {
+        worldInfo = await window.injectWorldInfo(chat, historyForScan);
+    } catch (e) { }
+
+    // 3. 构建成员列表
     const characterListText = memberData.map(m =>
-        `- ${m.name} ${m.isMe ? '(User扮演)' : ''}: ${m.desc}`
+        `- ${m.name} ${m.isMe ? '(User/主角)' : ''}: ${m.desc}`
     ).join('\n');
 
+    // 4. 环境信息
+    let envInfo = "";
+    try {
+        envInfo = await window.generateEnvPrompt(chat, userPersona);
+    } catch (e) { }
+
+    // 5. [核心修改] System Prompt：强制规定格式，严禁 JSON
     const systemPrompt = `
+# Role: Group Chat Director (群聊导演)
 你现在是一个“群聊剧场导演”。
-【场景】这是一个多人聊天群${chat.name ? '，群名为：' + chat.name : ''}。
-【当前群成员】
+
+# World Knowledge (世界认知)
+${worldInfo.top}
+
+# Context (场景与成员)
+${envInfo}
+【当前群成员】：
 ${characterListText}
+${worldInfo.bottom}
 
-【任务】
-User (扮演 ${currentUser.name}) 刚刚发送了消息。
-请根据人物关系和语境，**安排 2 到 4 条回复**，让群聊热闹起来！
-**不要只让一个人回复，允许其他群友插嘴、吐槽、复读或互动。**
+# Task (任务)
+User (扮演 ${userPersona.name}) 刚刚发送了消息。
+请根据人物关系，**安排 2 到 4 条回复**，让群聊热闹起来！
+允许其他群友插嘴、吐槽、复读或互动。
 
-【规则】
-1. 必须返回 JSON 数组格式。
-2. 必须模拟真实的群聊短句风格。
-3. speaker 必须完全匹配上面的【当前群成员】名字。
+# Output Format (输出协议 - 最高优先级)
+1. **严禁使用 JSON 格式！严禁使用 Markdown 代码块！**
+2. 必须使用纯文本格式，以 "[消息] 名字：" 作为每一段的开头。
+3. **支持内容换行**：如果角色要发送列表或长文，请直接换行，不要把所有内容挤在一行。
 
-【返回格式示例】
-[
-    {"speaker": "角色A", "text": "哈哈哈哈笑死我了"},
-    {"speaker": "角色B", "text": "确实，我也看到了"},
-    {"speaker": "角色A", "text": "下次一起去啊"}
-]
+【正确示范】：
+[消息] 团长: 听我指挥：
+1. 法师站左边
+2. 战士站右边
+[消息] 法师: 收到。
+
+【错误示范 (绝对禁止)】：
+{"messages": [{"speaker": "团长", "text": "..."}]} 
 `.trim();
 
-    // 3. 构建历史消息
-    const recentMessages = messages.slice(-15);
+    // 6. 构建历史消息
+    const recentMessages = messages.slice(-limit);
     const apiMessages = [{ role: "system", content: systemPrompt }];
 
     for (const msg of recentMessages) {
-        const senderChar = await window.dbSystem.getChar(msg.senderId);
-        const senderName = senderChar ? senderChar.name : "未知";
+        let senderName = "未知";
+        if (msg.senderId === userPersona.id) {
+            senderName = userPersona.name;
+        } else {
+            const senderChar = await window.dbSystem.getChar(msg.senderId);
+            if (senderChar) senderName = senderChar.name;
+        }
+        const role = (msg.senderId === userPersona.id) ? "user" : "assistant";
         apiMessages.push({
-            role: (msg.senderId === currentUser.id) ? "user" : "assistant",
-            content: `${senderName}: ${msg.text}`
+            role: role,
+            content: `[消息] ${senderName}：${msg.text}`
         });
     }
 
-    // 4. UI 反馈：换成【三个跳动的小点】+ 【senderId: -1】
-    // 这样配合 render.js 的修改，头像就会透明，只显示气泡
+    // 7. UI 反馈 (Typing)
     if (chatScroller) {
         chatScroller.append({
             chatId: chat.id,
-            // 这里换成了和单聊一样的动画代码
             text: `<div class="typing-bubble"><div class="typing-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>`,
-            senderId: -1, // -1 代表系统/加载中，render.js 会把头像变透明
+            senderId: -1,
             isTyping: true
         });
     }
 
-    // 5. 请求 API (调高温度，增加随机性)
-    const temperature = 1.1; // 温度设高一点，让 AI 更活跃，更愿意让不同人说话
+    // 8. 请求 API
+    const temperature = tempRec ? parseFloat(tempRec.value) : 1.0;
     const response = await requestWithKeyRotation(`${hostRec.value}/chat/completions`, (key) => ({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
             model: modelRec.value || "gpt-3.5-turbo",
             messages: apiMessages,
-            temperature: temperature,
-            response_format: { type: "json_object" }
+            temperature: temperature
         })
     }), dbKeys);
 
     const data = await response.json();
-    if (chatScroller) chatScroller.removeLast(); // 移除正在输入气泡
+    if (chatScroller) chatScroller.removeLast();
 
-    // 6. 解析并执行多条回复
+    // --- 9. 解析结果 (终极切割版，支持多行) ---
     let content = data.choices[0].message.content;
-    content = content.replace(/```json/g, '').replace(/```/g, '').trim();
-
     let actions = [];
-    try {
-        const parsed = JSON.parse(content);
-        // 兼容各种可能的 AI 返回结构
-        if (Array.isArray(parsed)) actions = parsed;
-        else if (parsed.actions) actions = parsed.actions;
-        else if (parsed.messages) actions = parsed.messages;
-        else if (parsed.speaker) actions = [parsed]; // 如果如果不幸只回了一条
-    } catch (e) {
-        console.error("JSON解析失败", content);
+
+    // 预处理：统一冒号
+    let rawText = content.replace(/：/g, ':').trim();
+
+    // 核心：以 [消息] 切割，不管里面有多少换行
+    let chunks = rawText.split(/\[消息\]/i);
+
+    for (let chunk of chunks) {
+        let trimmedChunk = chunk.trim();
+        if (!trimmedChunk) continue;
+
+        let firstColonIndex = trimmedChunk.indexOf(':');
+        if (firstColonIndex !== -1) {
+            let name = trimmedChunk.substring(0, firstColonIndex).trim();
+            // 冒号后面的所有内容（包括换行符）都是正文
+            let text = trimmedChunk.substring(firstColonIndex + 1).trim();
+
+            if (name && text) {
+                actions.push({ speaker: name, text: text });
+            }
+        }
     }
 
-    // 7. 循环发送消息 (制造一点点时间间隔，看起来像真人在发)
+    // 10. 发送消息
     for (let i = 0; i < actions.length; i++) {
         const action = actions[i];
         const speakerName = action.speaker;
         const text = action.text;
-        const speakerId = nameToIdMap[speakerName];
+
+        const speakerId = Object.keys(nameToIdMap).find(k => k === speakerName) ? nameToIdMap[speakerName] : null;
 
         if (speakerId) {
-            // 简单的延时效果，第一条立刻发，后面每条间隔 800ms
             if (i > 0) await new Promise(r => setTimeout(r, 800));
-
             await window.dbSystem.addMessage(chat.id, text, speakerId, 'text');
             if (chatScroller) {
                 chatScroller.append({
                     chatId: chat.id, text: text, senderId: speakerId, time: new Date()
                 });
             }
-            // 更新最后一条消息预览
             await window.dbSystem.chats.update(chat.id, { lastMsg: `${speakerName}: ${text}`, updated: new Date() });
+            if (window.renderChatUI) window.renderChatUI();
         }
     }
 }
-// [新增] 处理单聊：沉浸角色模式 (保留你的原始逻辑)
-async function handlePrivateChat(chat, currentUser, hostRec, modelRec, dbKeys, tempRec) {
+
+// [修改] 处理单聊：拟人化连发模式 (纯文本协议)
+async function handlePrivateChat(chat, userPersona, hostRec, modelRec, dbKeys, tempRec) {
     const messages = await window.dbSystem.getMessages(chat.id);
 
-    // --- 你的原始逻辑：确定 Listener 和 Speaker ---
-    let lastSenderId = -1;
-    if (messages.length > 0) lastSenderId = messages[messages.length - 1].senderId;
+    // --- [修改点] 获取动态记忆条数 ---
+    // 单聊默认稍微多一点，设为 25
+    const limit = chat.historyLimit || 25;
+    // -----------------------------
 
+    // 1. 确定 AI 身份
     const memberIds = chat.members;
-    // 在单聊中，简单的轮询是没问题的
-    let nextSpeakerId = memberIds.find(id => id !== lastSenderId);
+    let nextSpeakerId = memberIds.find(id => id !== userPersona.id);
     if (!nextSpeakerId) nextSpeakerId = memberIds[0];
 
-    // 确定对话对象（Listener）
-    let listenerId = memberIds.find(id => id !== nextSpeakerId);
-
     const speaker = await window.dbSystem.getChar(nextSpeakerId);
-    const listener = await window.dbSystem.getChar(listenerId);
-
     if (!speaker) throw new Error("找不到角色数据");
 
-    // --- 优化后的关系网构建 (极简模式：只给名片) ---
+    // 2. 生成环境信息
+    let envInfo = "";
+    try {
+        envInfo = await window.generateEnvPrompt(chat, userPersona);
+    } catch (e) { }
+
+    // 3. 准备扫描历史以触发世界书
+    const historyForScan = messages.slice(-limit).map(m => ({ content: m.text }));
+    const worldInfo = await window.injectWorldInfo(chat, historyForScan);
+
+    // 4. 构建关系描述
     const relations = await window.dbSystem.getRelations(nextSpeakerId);
-    let socialNetworkList = [];
-    const uniqueMap = new Map();
+    const myRels = relations
+        .filter(r => (r.fromId === nextSpeakerId && r.toId === userPersona.id) || (r.toId === nextSpeakerId && r.fromId === userPersona.id))
+        .map(r => r.desc)
+        .join('、');
+    const relationStr = myRels ? `(关系：${myRels})` : "";
 
-    // 1. 整理关系数据
-    for (const r of relations) {
-        const targetId = (r.fromId === nextSpeakerId) ? r.toId : r.fromId;
-
-        // 排除当前正在对话的对象（Listener），因为 Listener 的信息后面会单独详细加
-        if (targetId === listenerId) continue;
-
-        if (!uniqueMap.has(targetId)) {
-            const charData = await window.dbSystem.getChar(targetId);
-            if (charData) uniqueMap.set(targetId, { char: charData, rels: [] });
-        }
-        const item = uniqueMap.get(targetId);
-        if (item && !item.rels.includes(r.desc)) item.rels.push(r.desc);
-    }
-
-    // 2. 构建列表：严格只给 姓名 + 关系
-    for (const [id, data] of uniqueMap) {
-        const { char, rels } = data;
-        const relStr = rels.join('、');
-
-        // 【核心修改】绝不包含 char.desc，只给关系名片
-        socialNetworkList.push(`- ${char.name} (关系: ${relStr})`);
-    }
-
-    // 3. 构建当前对话对象的详细信息 (正在聊天的对象，必须给详细设定)
-    let currentPartnerInfo = "";
-    if (listener) {
-        // 获取你们之间的关系（如果有）
-        const myRels = relations
-            .filter(r => (r.fromId === nextSpeakerId && r.toId === listenerId) || (r.toId === nextSpeakerId && r.fromId === listenerId))
-            .map(r => r.desc)
-            .join('、');
-
-        currentPartnerInfo = `
-【当前对话对象】(请重点关注)
-- 姓名：${listener.name}
-- 关系：${myRels || "暂无定义"}
-- 设定：${listener.desc || "无"}
+    const currentPartnerInfo = `
+【对话对象】${userPersona.name} ${relationStr}
+【对象设定】${userPersona.desc || "无特殊设定"}
 `.trim();
-    }
-
-    // 4. 组合背景信息
-    let backgroundInfo = "";
-    if (socialNetworkList.length > 0) {
-        backgroundInfo = `
-【其他关系网络】
-${socialNetworkList.join('\n')}
-`.trim();
-    }
-
+    // 5. [核心修改] 重构 System Prompt：大幅强化人设权重
     const systemPrompt = `
-你现在扮演：${speaker.name}。
-你的核心设定：${speaker.desc || "无"}。
+# Roleplay Protocol (最高指令)
+你必须完全沉浸在角色中。
+# World Knowledge (世界认知)
+${worldInfo.top}
+你的名字：${speaker.name}
+**你的核心设定**：
+${speaker.desc || "无"}
+${worldInfo.bottom}
 
+
+# Context (当前环境)
 ${currentPartnerInfo}
+${envInfo}
 
-${backgroundInfo}
+# Output Format (输出协议)
+请遵循以下规则：
+1. **分段发送**：将回复拆分为 2~5 条简短的消息。
+2. **口语化**：严禁书面语，使用符合你人设的口癖、语气词。
+3. **格式强制**：每一行必须严格使用 "[消息] ${speaker.name}：内容" 的格式。
 
-【回复规则】
-1. 请完全沉浸在 ${speaker.name} 的人设中。
-2. 严禁扮演【当前对话对象】或【其他关系网络】中的人物。
-3. 必须以 JSON 数组格式返回: [{"text": "回复内容"}]
+# Deep Immersion (深度沉浸指令)
+1. 你的每一次回复必须严格符合【核心设定】中的性格和背景。
+2. 如果【世界认知】中有关于当前话题的设定，必须优先遵守。
+3. 不要表现得像个客服，要有情感、有情绪、甚至有偏见。
+4. **不要在回复中跳出角色讨论规则。**
+
+
 `.trim();
 
-    // --- 构造历史 ---
-    const recentMessages = messages.slice(-20);
+
+    // 6. 构建历史
+    // 增加历史记录长度，保证上下文连贯
+    const recentMessages = messages.slice(-limit);
     const apiMessages = [{ role: "system", content: systemPrompt }];
 
     for (const msg of recentMessages) {
-        const msgSender = await window.dbSystem.getChar(msg.senderId);
-        const prefix = msgSender ? `${msgSender.name}: ` : "";
+        let prefixName = "未知";
+        if (msg.senderId === speaker.id) prefixName = speaker.name;
+        else if (msg.senderId === userPersona.id) prefixName = userPersona.name;
+
+        const role = (msg.senderId === userPersona.id) ? "user" : "assistant";
         apiMessages.push({
-            role: (msg.senderId === nextSpeakerId) ? "assistant" : "user",
-            content: prefix + msg.text
+            role: role,
+            content: `[消息] ${prefixName}：${msg.text}`
         });
     }
 
@@ -1173,41 +1317,106 @@ ${backgroundInfo}
     }
 
     // --- 请求 API ---
-    const temperature = tempRec ? parseFloat(tempRec.value) : 0.7;
+    // [建议] 稍微调高温度，让扮演更灵活，不要太死板
+    let temperature = tempRec ? parseFloat(tempRec.value) : 0.85;
+
     const response = await requestWithKeyRotation(`${hostRec.value}/chat/completions`, (key) => ({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
             model: modelRec.value || "gpt-3.5-turbo",
             messages: apiMessages,
-            temperature: temperature,
-            response_format: { type: "json_object" }
+            temperature: temperature
         })
     }), dbKeys);
 
     const data = await response.json();
     if (chatScroller) chatScroller.removeLast();
 
-    // --- 解析结果 ---
+    // --- 9. 解析结果 (终极分割版) ---
     let content = data.choices[0].message.content;
-    let replyArray = [];
-    try {
-        content = content.replace(/```json/g, '').replace(/```/g, '').trim();
-        const parsed = JSON.parse(content);
-        replyArray = Array.isArray(parsed) ? parsed : (parsed.messages || [parsed]);
-    } catch (e) {
-        replyArray = [{ text: content }];
+    let msgQueue = [];
+
+    // 1. 预处理：统一冒号，去除首尾空白
+    // 这一步很重要，防止 AI 混用中英文冒号导致解析失败
+    let rawText = content.replace(/：/g, ':').trim();
+
+    // 2. 核心逻辑：直接使用正则表达式拆分数组
+    // split(/\[消息\]/i) 会以 "[消息]" 为界把字符串切成几块
+    // 比如 "A[消息]B[消息]C" 会变成 ["A", "B", "C"]
+    let chunks = rawText.split(/\[消息\]/i);
+
+    // 3. 遍历每一块内容
+    for (let chunk of chunks) {
+        let trimmedChunk = chunk.trim();
+        if (!trimmedChunk) continue; // 跳过空块
+
+        // 寻找第一个冒号的位置
+        // 我们只切分第一个冒号，冒号后面的所有内容（包括换行、甚至其他的冒号）都属于正文
+        let firstColonIndex = trimmedChunk.indexOf(':');
+
+        if (firstColonIndex !== -1) {
+            // --- 情况 A：标准格式 (有名字，有冒号) ---
+
+            // 名字：冒号左边的部分
+            let name = trimmedChunk.substring(0, firstColonIndex).trim();
+            // 内容：冒号右边的所有部分
+            let text = trimmedChunk.substring(firstColonIndex + 1).trim();
+
+            if (text) {
+                // 如果是 handleGroupChat，你可能需要在这里把 name 转成 speakerId
+                // 如果是 handlePrivateChat，这一步主要是提取 text
+                msgQueue.push({ speaker: name, text: text });
+            }
+        } else {
+            // --- 情况 B：没有冒号的漏网之鱼 (比如你截图里的 "彼此彼此吧") ---
+            // 这种通常出现在第一句，或者 AI 忘记写名字了
+            // 我们直接把它当成正文，如果是单聊，就默认是对方说的
+            // 过滤掉系统指令(#)
+            if (!trimmedChunk.startsWith('#') && !trimmedChunk.startsWith('User')) {
+                // 如果没有名字，我们可以给个默认标记，或者在后续逻辑里只取 text
+                msgQueue.push({ speaker: null, text: trimmedChunk });
+            }
+        }
     }
 
-    for (const item of replyArray) {
-        if (!item.text) continue;
-        await window.dbSystem.addMessage(chat.id, item.text, nextSpeakerId, 'text');
+    // 下面需要适配一下你原来的 msgQueue 格式
+    // 如果你原来的代码是直接存 string 数组，就用 map 转换一下
+    // 假设原来的逻辑是遍历 msgQueue 发送：
+    let finalQueue = msgQueue.map(item => item.text);
+
+    // --- 适配结束，继续你的发送逻辑 ---
+    // --- 模拟连发间隔 ---
+    for (let i = 0; i < msgQueue.length; i++) {
+        const text = (typeof msgQueue[i] === 'object') ? msgQueue[i].text : msgQueue[i];
+
+        if (i > 0) {
+            if (chatScroller) {
+                chatScroller.append({
+                    chatId: chat.id,
+                    text: `<div class="typing-bubble"><div class="typing-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>`,
+                    senderId: nextSpeakerId,
+                    isTyping: true
+                });
+                scrollToBottom(); // 确保看到最新的typing
+            }
+
+            // 动态计算延迟：字数越多，等待越久
+            const delay = 600 + Math.random() * 800 + (text.length * 30);
+            await new Promise(r => setTimeout(r, delay));
+
+            if (chatScroller) chatScroller.removeLast();
+        }
+
+        await window.dbSystem.addMessage(chat.id, text, nextSpeakerId, 'text');
+
         if (chatScroller) {
             chatScroller.append({
-                chatId: chat.id, text: item.text, senderId: nextSpeakerId, time: new Date()
+                chatId: chat.id, text: text, senderId: nextSpeakerId, time: new Date()
             });
         }
-        await window.dbSystem.chats.update(chat.id, { lastMsg: item.text, updated: new Date() });
+
+        await window.dbSystem.chats.update(chat.id, { lastMsg: text, updated: new Date() });
     }
 }
 /* =========================================
@@ -1405,4 +1614,1552 @@ window.submitCreateGroup = async function () {
 
     // 打开窗口
     window.openChatDetail(chatId);
+};
+/* =========================================
+   [新增] 聊天环境设置 (Env Settings) 逻辑
+   ========================================= */
+
+let currentEnvTarget = 'user'; // 'user' or 'char'
+
+// 1. 打开设置页面
+window.openChatSettings = async function () {
+    if (!window.currentActiveChatId) return;
+    window.openApp('chat-settings');
+
+    const chatId = parseInt(window.currentActiveChatId);
+    const chat = await window.dbSystem.chats.get(chatId);
+
+    // === 1. [核心修复] 回显世界书挂载状态 ===
+    // 这一步之前漏了，导致每次打开都显示默认的“未挂载”
+    if (chat) {
+        const count = (chat.mountedWorldBooks || []).length;
+        const el = document.getElementById('wb-mount-status');
+        if (el) {
+            el.innerText = count > 0 ? `已挂载 ${count} 个局部设定` : "未挂载局部设定";
+            // 给个高亮颜色提示
+            el.style.color = count > 0 ? "var(--theme-purple)" : "#999";
+        }
+    }
+    // === [新增] 回显短期记忆条数 ===
+    const limitInput = document.getElementById('setting-context-limit');
+    if (limitInput) {
+        // 如果数据库里没有存(null)，默认显示 25
+        limitInput.value = chat.historyLimit || 25;
+    }
+    // === 2. 环境增强设置回显 (保持原有逻辑) ===
+    const switchEl = document.getElementById('env-mode-switch');
+    const panel = document.getElementById('env-settings-panel');
+    if (chat.envEnabled) {
+        switchEl.checked = true;
+        panel.style.display = 'block';
+    } else {
+        switchEl.checked = false;
+        panel.style.display = 'none';
+    }
+
+    // 更新“我的位置”数据
+    if (typeof updateCityUI === 'function') {
+        updateCityUI(chat.envUserCity, 'user');
+    }
+
+    // === 3. 环境设置分流 (单聊/群聊) ===
+    const isGroup = (chat.name || chat.members.length > 2);
+    const singleView = document.getElementById('view-mode-single');
+    const groupView = document.getElementById('view-mode-group');
+
+    if (isGroup) {
+        // 群聊模式
+        if (singleView) singleView.style.display = 'none';
+        if (groupView) {
+            groupView.style.display = 'block';
+            if (typeof renderGroupEnvList === 'function') {
+                renderGroupEnvList(chat);
+            }
+        }
+    } else {
+        // 单聊模式
+        if (groupView) groupView.style.display = 'none';
+        if (singleView) {
+            singleView.style.display = 'flex';
+            if (typeof updateCityUI === 'function') {
+                updateCityUI(chat.envCharCity, 'char');
+            }
+        }
+    }
+};
+
+// [新增] 渲染群成员位置列表
+async function renderGroupEnvList(chat) {
+    const container = document.getElementById('env-group-list-container');
+    container.innerHTML = '<div style="padding:10px;text-align:center;color:#ccc;">加载中...</div>';
+
+    let html = '';
+    const memberMap = chat.envMemberMap || {};
+
+    for (const memberId of chat.members) {
+        // 跳过自己
+        const me = await window.dbSystem.getCurrent();
+        if (me && me.id === memberId) continue;
+
+        const char = await window.dbSystem.getChar(memberId);
+        if (!char) continue;
+
+        const locData = memberMap[memberId];
+        const hasSet = (locData && locData.isValid);
+
+        // 数据准备
+        // 如果没设置，大字显示“未设置”，映射显示空
+        const displayFake = hasSet ? locData.fake : "未设置";
+        const displayReal = hasSet ? `映射: ${locData.real}` : "映射: (空)";
+        const statusClass = hasSet ? "active" : ""; // 绿点类名
+
+        // 这里的 class 直接用了 city-card-wide，保证和上面一模一样
+        // 额外加了 env-list-item 用来控制间距
+        html += `
+        <div class="city-card-wide env-list-item" onclick="openCityModal('member-${memberId}')">
+            
+            <div class="city-card-header">
+                <div class="city-label-group">
+                    <div class="city-label-title">
+                        <span class="char-status-dot ${statusClass}"></span>${char.name}
+                    </div>
+                    <div class="city-name-main" style="font-size:18px; margin-top:2px;">
+                        ${displayFake}
+                    </div>
+                </div>
+            </div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-top:8px; border-top:1px solid #f9f9f9; padding-top:8px;">
+                <div class="city-name-sub" style="color:${hasSet ? '#9B9ECE' : '#ccc'}">
+                    ${displayReal}
+                </div>
+                <div id="weather-preview-${memberId}" class="city-weather-info" style="color:#9B9ECE;">
+                    ${hasSet ? '加载中...' : '--'}
+                </div>
+            </div>
+
+        </div>`;
+
+        // 异步加载数据
+        if (hasSet) {
+            fetchEnvData(locData.real).then(res => {
+                if (res) {
+                    const wEl = document.getElementById(`weather-preview-${memberId}`);
+                    // 格式完全统一： 20:47 | -2.5°C, 晴朗
+                    if (wEl) wEl.innerText = `${res.time} | ${res.temp}°C, ${res.weather}`;
+                }
+            });
+        }
+    }
+
+    if (html === '') {
+        html = '<div style="padding:20px;text-align:center;color:#eee;font-size:12px;">没有其他成员</div>';
+    }
+    container.innerHTML = html;
+}
+
+// 2. 切换开关
+window.toggleEnvMode = async function (el) {
+    const isChecked = el.checked;
+    const panel = document.getElementById('env-settings-panel');
+    panel.style.display = isChecked ? 'block' : 'none';
+
+    // 保存到数据库
+    if (window.currentActiveChatId) {
+        await window.dbSystem.chats.update(window.currentActiveChatId, {
+            envEnabled: isChecked
+        });
+    }
+};
+
+// 3. 打开城市弹窗
+window.openCityModal = async function (target) {
+    currentEnvTarget = target; // 可能是 'user', 'char', 'member-5'
+    const modal = document.getElementById('modal-city-select');
+    modal.style.display = 'flex';
+
+    const chat = await window.dbSystem.chats.get(window.currentActiveChatId);
+    let data = null;
+
+    if (target === 'user') {
+        data = chat.envUserCity;
+    } else if (target === 'char') {
+        data = chat.envCharCity;
+    } else if (target.startsWith('member-')) {
+        const mid = parseInt(target.split('-')[1]);
+        if (chat.envMemberMap) {
+            data = chat.envMemberMap[mid];
+        }
+    }
+
+    document.getElementById('city-fake-input').value = data ? data.fake : '';
+    document.getElementById('city-real-input').value = data ? data.real : '';
+};
+
+// 4. 保存城市选择
+window.saveCitySelection = async function () {
+    const fakeInput = document.getElementById('city-fake-input');
+    const realInput = document.getElementById('city-real-input');
+    if (!fakeInput || !realInput) return;
+
+    const fake = fakeInput.value.trim();
+    const real = realInput.value.trim();
+
+    if (!fake || !real) return alert("请填写完整信息");
+
+    const saveBtn = document.querySelector('#modal-city-select .btn-main');
+    const originalText = saveBtn.innerText;
+    saveBtn.innerText = "正在验证...";
+
+    try {
+        const validation = await validateCity(real);
+        const data = {
+            fake: fake,
+            real: validation.success ? validation.realName : real,
+            isValid: validation.success,
+            lat: validation.lat,
+            lon: validation.lon,
+            tz: validation.tz
+        };
+
+        if (window.currentActiveChatId) {
+            const chatId = parseInt(window.currentActiveChatId);
+            const chat = await window.dbSystem.chats.get(chatId);
+
+            // --- 关键分支逻辑 ---
+            if (currentEnvTarget === 'user') {
+                // 保存我的位置
+                await window.dbSystem.chats.update(chatId, { envUserCity: data });
+                updateCityUI(data, 'user');
+
+            } else if (currentEnvTarget === 'char') {
+                // 保存单聊对方
+                await window.dbSystem.chats.update(chatId, { envCharCity: data });
+                updateCityUI(data, 'char');
+
+            } else if (currentEnvTarget.startsWith('member-')) {
+                // [新增] 保存群成员
+                const memberId = parseInt(currentEnvTarget.split('-')[1]);
+
+                // 读取旧 map 或新建
+                const newMap = chat.envMemberMap || {};
+                newMap[memberId] = data; // 更新该成员
+
+                await window.dbSystem.chats.update(chatId, { envMemberMap: newMap });
+
+                // 刷新列表 (局部刷新比重绘整个页面好，但简单起见直接调 render)
+                renderGroupEnvList(await window.dbSystem.chats.get(chatId));
+            }
+        }
+
+        document.getElementById('modal-city-select').style.display = 'none';
+
+    } catch (e) {
+        console.error(e);
+        alert("保存出错: " + e.message);
+    } finally {
+        saveBtn.innerText = originalText;
+    }
+};
+
+// --- [新增] 城市验证函数 ---
+async function validateCity(cityName) {
+    if (!cityName) return { success: false };
+
+    try {
+        // 1. 检测输入是不是纯英文
+        const isEnglish = /^[a-zA-Z\s\.\-\,]+$/.test(cityName);
+
+        let url;
+        let res, data;
+
+        if (isEnglish) {
+            // --- 英文输入模式 ---
+            // 策略：先用英文搜 (精度最高)，防止 "New York" 变成 "约克"
+            // count=5 是为了让 API 有机会根据人口排序，把大城市排前面
+            url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=5&language=en&format=json`;
+            res = await fetch(url);
+            data = await res.json();
+
+        } else {
+            // --- 中文输入模式 ---
+            // 策略：直接用中文搜
+            url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=5&language=zh&format=json`;
+            res = await fetch(url);
+            data = await res.json();
+        }
+
+        // 如果第一种策略没搜到，尝试兜底（反向策略）
+        if (!data.results || data.results.length === 0) {
+            const fallbackLang = isEnglish ? 'zh' : 'en';
+            url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(cityName)}&count=5&language=${fallbackLang}&format=json`;
+            res = await fetch(url);
+            data = await res.json();
+        }
+
+        if (data.results && data.results.length > 0) {
+            // 取第一个结果 (API默认按相关性和人口排序，通常第一个就是对的)
+            const place = data.results[0];
+
+            // 智能名称显示：
+            // 如果 API 返回了中文名 (place.name 随 language 变)，就用中文
+            // 如果没有，就用它原本的名字
+            const displayName = place.name;
+
+            return {
+                success: true,
+                realName: displayName, // 这里存入数据库
+                lat: place.latitude,
+                lon: place.longitude,
+                tz: place.timezone,
+                country: place.country
+            };
+        }
+        return { success: false };
+    } catch (e) {
+        console.warn("City Validation Error", e);
+        return { success: false };
+    }
+}
+
+
+
+
+// 辅助：更新界面上的文字
+async function updateCityUI(data, type) {
+    // 1. 处理“我的位置” (单聊+群聊两处UI)
+    if (type === 'user') {
+        const ids = [
+            { fake: 'ui-user-fake', real: 'ui-user-real', weather: 'ui-user-weather' },
+            { fake: 'ui-user-fake-group', real: 'ui-user-real-group', weather: 'ui-user-weather-group' }
+        ];
+
+        for (const idSet of ids) {
+            const elFake = document.getElementById(idSet.fake);
+            const elReal = document.getElementById(idSet.real);
+            const elWeather = document.getElementById(idSet.weather);
+
+            if (!elFake) continue;
+
+            if (!data || !data.fake) {
+                elFake.innerText = "点击设置";
+                if (elReal) elReal.innerText = "映射: --";
+                if (elWeather) elWeather.innerText = "--";
+            } else {
+                elFake.innerText = data.fake;
+                if (elReal) {
+                    elReal.innerText = data.isValid ? `映射: ${data.real}` : `未验证: ${data.real}`;
+                    elReal.style.color = data.isValid ? "#9B9ECE" : "#FF3B30";
+                }
+                if (elWeather && data.isValid && data.real) {
+                    fetchEnvData(data.real).then(w => {
+                        if (w) {
+                            // 🔴 修改点：加入了 w.time (例如: 14:30 | 25°C, 晴)
+                            elWeather.innerText = `${w.time} | ${w.temp}°C, ${w.weather}`;
+                        }
+                    });
+                }
+            }
+        }
+        return;
+    }
+
+    // 2. 处理“对方位置” (单聊UI)
+    const elFake = document.getElementById(`ui-${type}-fake`);
+    const elReal = document.getElementById(`ui-${type}-real`);
+    const elWeather = document.getElementById(`ui-${type}-weather`);
+
+    if (!data || !data.fake) {
+        if (elFake) elFake.innerText = "点击设置";
+        if (elReal) elReal.innerText = "映射: --";
+        if (elWeather) elWeather.innerText = "--";
+        return;
+    }
+
+    if (elFake) elFake.innerText = data.fake;
+    if (elReal) {
+        elReal.innerText = data.isValid ? `映射: ${data.real}` : `未验证: ${data.real}`;
+        elReal.style.color = data.isValid ? "#9B9ECE" : "#FF3B30";
+    }
+    if (data.isValid && data.real && elWeather) {
+        elWeather.innerText = "加载中...";
+        fetchEnvData(data.real).then(w => {
+            if (w) {
+                // 🔴 修改点：加入了 w.time
+                elWeather.innerText = `${w.time} | ${w.temp}°C, ${w.weather}`;
+            }
+        });
+    }
+}
+
+// [修改] 获取环境数据 (最终修复版：精准实时时间 + 国际化支持)
+async function fetchEnvData(realCityName) {
+    if (!realCityName) return null;
+
+    try {
+        // 1. 验证并获取坐标与时区
+        // (这里直接复用 validateCity 的逻辑，确保拿到正确的 timezone)
+        const cityInfo = await validateCity(realCityName);
+        if (!cityInfo.success) return null;
+
+        const { lat, lon, tz } = cityInfo;
+
+        // 2. 获取实时天气
+        const weatherUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current_weather=true&timezone=${encodeURIComponent(tz)}`;
+        const weatherRes = await fetch(weatherUrl);
+        const wData = await weatherRes.json();
+
+        if (!wData.current_weather) return null;
+
+        // --- 核心修复：计算"墙上的时钟" (Wall Clock Time) ---
+        // 不读取 wData.current_weather.time (那是整点报告时间)
+        // 而是用当前系统时间 + 目标时区 (tz) 进行投影
+        const now = new Date();
+        const localTimeStr = new Intl.DateTimeFormat('en-GB', {
+            timeZone: tz,       // 强制使用目标城市时区
+            hour: '2-digit',    // 两位数小时
+            minute: '2-digit',  // 两位数分钟
+            hour12: false       // 24小时制
+        }).format(now);
+
+        // 3. 天气代码映射
+        const weatherMap = {
+            0: "晴朗", 1: "多云", 2: "阴天", 3: "阴",
+            45: "雾", 48: "雾凇", 51: "小雨", 61: "下雨", 63: "中雨", 65: "大雨",
+            71: "下雪", 80: "阵雨", 95: "雷雨"
+        };
+        const code = wData.current_weather.weathercode;
+        const weatherDesc = weatherMap[code] || "多云";
+        const temp = wData.current_weather.temperature;
+
+        return {
+            time: localTimeStr, // 输出示例: "20:48"
+            temp: temp,
+            weather: weatherDesc,
+            timezone: tz
+        };
+
+    } catch (e) {
+        console.error("Fetch Env Error:", e);
+        return null;
+    }
+}
+
+// =========================================
+// [注入] 注入 Prompt 生成器
+// =========================================
+
+// [完整修复版] 注入 Prompt 生成器 (保留所有功能)
+window.generateEnvPrompt = async function (chat, userPersona) {
+    if (!chat.envEnabled) return "";
+
+    // 1. 基础校验
+    if (!chat.envUserCity || !chat.envUserCity.isValid) return "";
+
+    // 【修复点 1】直接使用传入的 userPersona
+    const currentUser = userPersona;
+    if (!currentUser) return "";
+
+    const userName = currentUser.name;
+    const myId = currentUser.id;
+
+    // --- 【完整保留】时间流逝感知逻辑 ---
+    const messages = await window.dbSystem.getMessages(chat.id);
+    let timeGapDesc = "这是对话的开始。";
+    let timeGapInstruction = "";
+
+    if (messages.length > 0) {
+        // 1. 获取最新的一条消息 (刚刚用户发的)
+        const currentMsg = messages[messages.length - 1];
+        const currentTime = currentMsg.time instanceof Date ? currentMsg.time : new Date(currentMsg.time);
+
+        // 2. 倒序查找：找到最近一条“非用户发送”的消息 (即 Char 的最后回复)
+        let lastCharMsg = null;
+        for (let i = messages.length - 2; i >= 0; i--) {
+            // 如果发送者 ID 不等于我的 ID，说明是 Char 发的
+            if (messages[i].senderId !== myId) {
+                lastCharMsg = messages[i];
+                break; // 找到了就停止
+            }
+        }
+
+        // 3. 计算时间差
+        if (lastCharMsg) {
+            const prevTime = lastCharMsg.time instanceof Date ? lastCharMsg.time : new Date(lastCharMsg.time);
+            const diffMins = Math.floor((currentTime - prevTime) / 60000);
+
+            if (diffMins < 10) {
+                timeGapDesc = "对话正在热烈进行中。";
+            } else if (diffMins < 60) {
+                timeGapDesc = `距离上一句话过去了 ${diffMins} 分钟。`;
+                timeGapInstruction = "如果是你发言，可以表现出刚才稍微忙了一会儿。";
+            } else if (diffMins < 24 * 60) {
+                const hours = Math.floor(diffMins / 60);
+                const mins = diffMins % 60;
+                timeGapDesc = `距离上次回复已经过去了 ${hours} 小时 ${mins} 分钟。`;
+                timeGapInstruction = "⚠️ 重点：User已经消失很久了。请根据这个较长的时间间隔，自然地做出反应（如问候“下午好/晚上好”，或问User刚才去哪了，为什么不回消息）。";
+            } else {
+                const days = Math.floor(diffMins / (24 * 60));
+                timeGapDesc = `距离上次回复已经过去了 ${days} 天！`;
+                timeGapInstruction = "⚠️ 重点：User已经失踪好几天了！请表现出久别重逢的惊讶、担心或生气。";
+            }
+        } else {
+            timeGapDesc = "这是新的对话，Char 尚未发言。";
+        }
+    }
+    // ---------------------------
+
+    const userData = await fetchEnvData(chat.envUserCity.real);
+    if (!userData) return "";
+
+    const getPeriod = (timeStr) => {
+        const hour = parseInt(timeStr.split(':')[0]);
+        if (hour >= 5 && hour < 12) return "早晨";
+        if (hour >= 12 && hour < 18) return "下午";
+        if (hour >= 18 && hour < 22) return "晚上";
+        return "深夜";
+    };
+    const userPeriod = getPeriod(userData.time);
+
+    const isGroup = (chat.name || chat.members.length > 2);
+    let promptParts = [];
+
+    promptParts.push(`⏱️ [时间感知]: ${timeGapDesc}`);
+    if (timeGapInstruction) promptParts.push(`👉 [指导]: ${timeGapInstruction}`);
+
+    promptParts.push(`📍 ${userName}的位置 (${chat.envUserCity.fake}): ${userData.time} (${userPeriod}), ${userData.weather}, ${userData.temp}°C`);
+
+    if (isGroup) {
+        // === 【完整保留】群聊逻辑 ===
+        const memberMap = chat.envMemberMap || {};
+        let groupStatusList = [];
+
+        for (const mid of chat.members) {
+            if (currentUser && mid === currentUser.id) continue;
+            const setting = memberMap[mid];
+            if (setting && setting.isValid) {
+                const char = await window.dbSystem.getChar(mid);
+                const env = await fetchEnvData(setting.real);
+                if (char && env) {
+                    const charPeriod = getPeriod(env.time);
+                    groupStatusList.push(`- ${char.name} @ ${setting.fake}: ${env.time} (${charPeriod}), ${env.weather}`);
+                }
+            }
+        }
+
+        if (groupStatusList.length === 0 && chat.envCharCity && chat.envCharCity.isValid) {
+            const commonEnv = await fetchEnvData(chat.envCharCity.real);
+            if (commonEnv) {
+                const p = getPeriod(commonEnv.time);
+                groupStatusList.push(`- (其他群成员) @ ${chat.envCharCity.fake}: ${commonEnv.time} (${p}), ${commonEnv.weather}`);
+            }
+        }
+
+        if (groupStatusList.length > 0) {
+            promptParts.push("🌍 群成员实时分布:");
+            promptParts.push(groupStatusList.join('\n'));
+            promptParts.push("💡 注意：群成员可能身处不同时区，请体现时空差异。");
+        }
+
+    } else {
+        // === 【完整保留】单聊逻辑 ===
+        if (chat.envCharCity && chat.envCharCity.isValid) {
+            const charData = await fetchEnvData(chat.envCharCity.real);
+            if (charData) {
+                const charPeriod = getPeriod(charData.time);
+                let timeDiffDesc = (userData.timezone === charData.timezone)
+                    ? "(同属一个时区)"
+                    : `(存在时差：${userName}是${userPeriod}，你是${charPeriod})`;
+
+                promptParts.push(`📍 你的位置 (${chat.envCharCity.fake}): ${charData.time} (${charPeriod}), ${charData.weather}, ${charData.temp}°C`);
+                promptParts.push(`💡 提示: ${timeDiffDesc}。`);
+            }
+        }
+    }
+
+    if (promptParts.length <= 2) return "";
+
+    return `\n【🌍 实时环境同步】\n${promptParts.join('\n')}\n`;
+};
+/* =========================================
+   [重构] 视觉设置逻辑 (支持群头像 + 成员独立设置)
+   ========================================= */
+
+let currentVisualTargetId = null;
+let tempVisualData = {};
+// [新增] 专门用于管理设置页面的 Blob URL，防止污染全局 activeUrls
+let visualPageUrls = [];
+
+// [新增] 清理函数：释放内存
+function cleanVisualPageMemory() {
+    if (visualPageUrls.length > 0) {
+        visualPageUrls.forEach(u => URL.revokeObjectURL(u));
+        visualPageUrls = [];
+        console.log("视觉设置页内存已释放");
+    }
+}
+
+// 1. 监听子页面打开，如果是 'visual' 则加载数据
+const originalOpenSubPage = window.openSubPage;
+window.openSubPage = async function (pageName) {
+    if (originalOpenSubPage) originalOpenSubPage(pageName);
+
+    if (pageName === 'visual') {
+        await loadVisualSettings();
+    }
+};
+
+// 2. 加载视觉设置数据
+async function loadVisualSettings() {
+    if (!window.currentActiveChatId) return;
+
+    // 1. 打开前先清理一次（以防万一上次没关干净）
+    cleanVisualPageMemory();
+
+    const chat = await window.dbSystem.chats.get(window.currentActiveChatId);
+
+    // 初始化暂存 (Deep Copy)
+    tempVisualData = chat.visualOverrides ? JSON.parse(JSON.stringify(chat.visualOverrides)) : {};
+
+    const container = document.getElementById('visual-target-container');
+    container.innerHTML = '';
+
+    // --- A. 添加“本群信息” ---
+    if (chat.name || chat.members.length > 2) {
+        const groupDiv = document.createElement('div');
+        groupDiv.className = 'visual-target-item';
+        groupDiv.id = 'v-target-GROUP';
+        groupDiv.onclick = () => selectVisualTarget('GROUP');
+
+        let groupAvatarStyle = "";
+        // 优先读 override
+        if (tempVisualData['GROUP'] && tempVisualData['GROUP'].avatar) {
+            // 这里是 Base64，不需要释放，但如果是 Blob URL 就要小心
+            groupAvatarStyle = `background-image:url(${tempVisualData['GROUP'].avatar})`;
+        } else {
+            groupAvatarStyle = `background:#9B9ECE; display:flex; align-items:center; justify-content:center;`;
+        }
+
+        groupDiv.innerHTML = `
+            <div class="avatar" style="width:46px; height:46px; margin:0; ${groupAvatarStyle}; border-radius:14px; color:#fff;">
+                ${groupAvatarStyle.includes('url') ? '' : '<svg viewBox="0 0 24 24" width="24" height="24" fill="white"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg>'}
+            </div>
+            <span style="font-size:10px; color:#666; margin-top:6px; font-weight:bold;">本群</span>
+        `;
+        container.appendChild(groupDiv);
+    }
+
+    // --- B. 添加成员列表 (内存泄漏高发区) ---
+    let firstId = null;
+    for (const mid of chat.members) {
+        const char = await window.dbSystem.getChar(mid);
+        if (!char) continue;
+        if (!firstId) firstId = mid;
+
+        let avatarStyle = "";
+
+        // 1. Override (Base64，安全)
+        if (tempVisualData[mid] && tempVisualData[mid].avatar) {
+            avatarStyle = `background-image:url(${tempVisualData[mid].avatar})`;
+        }
+        // 2. Default (Blob，必须追踪！)
+        else if (char.avatar instanceof Blob) {
+            const u = URL.createObjectURL(char.avatar);
+            visualPageUrls.push(u); // <--- [关键] 加入清理列表
+            avatarStyle = `background-image:url(${u})`;
+        } else if (typeof char.avatar === 'string' && char.avatar) {
+            avatarStyle = `background-image:url(${char.avatar})`;
+        } else {
+            avatarStyle = "background:#ccc";
+        }
+
+        const div = document.createElement('div');
+        div.className = 'visual-target-item';
+        div.id = `v-target-${mid}`;
+        div.onclick = () => selectVisualTarget(mid);
+        div.innerHTML = `
+            <div class="avatar" style="width:46px; height:46px; margin:0; ${avatarStyle}; background-size:cover; background-position:center; border-radius:50%; color:#fff; font-size:14px;">
+                ${avatarStyle.includes('url') ? '' : char.name[0]}
+            </div>
+            <span style="font-size:10px; color:#666; margin-top:6px;">${char.type === 1 ? '我' : char.name}</span>
+        `;
+        container.appendChild(div);
+    }
+
+    if (chat.name && tempVisualData['GROUP'] !== undefined) {
+        selectVisualTarget('GROUP');
+    } else if (firstId) {
+        selectVisualTarget(firstId);
+    }
+}
+
+// 3. 选中目标 (GROUP 或 memberId)
+window.selectVisualTarget = async function (targetId) {
+    currentVisualTargetId = targetId;
+
+    // UI Highlight
+    document.querySelectorAll('.visual-target-item').forEach(e => e.classList.remove('active'));
+    const activeEl = document.getElementById(`v-target-${targetId}`);
+    if (activeEl) activeEl.classList.add('active');
+
+    // 准备默认值
+    const defaults = {
+        alias: '',
+        shape: 'circle',
+        size: 40,
+        hidden: false,
+        avatar: null
+    };
+
+    const data = tempVisualData[targetId] || defaults;
+
+    // --- 填充表单 ---
+
+    // 名字
+    let nameDisplay = "未知";
+    if (targetId === 'GROUP') {
+        nameDisplay = "群聊设置";
+        document.getElementById('visual-alias-input').placeholder = "修改群名";
+    } else {
+        const char = await window.dbSystem.getChar(targetId);
+        nameDisplay = char ? char.name : "未知";
+        document.getElementById('visual-alias-input').placeholder = "默认";
+    }
+    document.getElementById('visual-target-name').innerText = nameDisplay;
+    document.getElementById('visual-alias-input').value = data.alias || '';
+
+    // 形状、大小、显隐
+    setVisualShapeUI(data.shape || 'circle');
+    document.getElementById('visual-size-slider').value = data.size || 40;
+    updateVisualSizeVal(data.size || 40);
+    document.getElementById('visual-show-switch').checked = !data.hidden;
+
+    // 头像预览
+    const preview = document.getElementById('visual-preview');
+    if (data.avatar) {
+        preview.style.backgroundImage = `url(${data.avatar})`;
+    } else {
+        // 无 override，显示原始头像
+        if (targetId === 'GROUP') {
+            preview.style.backgroundImage = 'none';
+            preview.style.backgroundColor = '#9B9ECE';
+        } else {
+            const char = await window.dbSystem.getChar(targetId);
+            if (char.avatar instanceof Blob) {
+                const u = URL.createObjectURL(char.avatar);
+                visualPageUrls.push(u); // <--- [关键] 加入清理列表
+                preview.style.backgroundImage = `url(${u})`;
+            } else if (typeof char.avatar === 'string' && char.avatar) {
+                preview.style.backgroundImage = `url(${char.avatar})`;
+            } else {
+                preview.style.backgroundImage = 'none';
+                preview.style.backgroundColor = '#ccc';
+            }
+        }
+    }
+
+    // 形状同步给预览图
+    preview.style.borderRadius = (data.shape === 'square') ? '12px' : '50%';
+};
+
+// 4. 辅助 UI 函数
+window.updateVisualSizeVal = function (val) {
+    document.getElementById('visual-size-val').innerText = val + 'px';
+    // 实时更新 temp
+    ensureTemp();
+    tempVisualData[currentVisualTargetId].size = parseInt(val);
+};
+
+window.setVisualShape = function (shape) {
+    setVisualShapeUI(shape);
+    ensureTemp();
+    tempVisualData[currentVisualTargetId].shape = shape;
+    // 实时更新预览图形状
+    document.getElementById('visual-preview').style.borderRadius = (shape === 'square') ? '12px' : '50%';
+};
+
+function setVisualShapeUI(shape) {
+    document.getElementById('shape-circle').className = (shape === 'circle' ? 'shape-option active' : 'shape-option');
+    document.getElementById('shape-square').className = (shape === 'square' ? 'shape-option active' : 'shape-option');
+}
+
+window.toggleVisualVisibility = function (el) {
+    ensureTemp();
+    tempVisualData[currentVisualTargetId].hidden = !el.checked;
+};
+
+// 5. 头像上传
+window.handleVisualAvatarFile = function (input) {
+    const file = input.files[0];
+    if (!file || !currentVisualTargetId) return;
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        const base64 = e.target.result;
+        document.getElementById('visual-preview').style.backgroundImage = `url(${base64})`;
+        ensureTemp();
+        tempVisualData[currentVisualTargetId].avatar = base64;
+    };
+    reader.readAsDataURL(file);
+};
+
+function ensureTemp() {
+    if (!tempVisualData[currentVisualTargetId]) tempVisualData[currentVisualTargetId] = {};
+}
+
+// 6. 保存 (保存所有更改)
+window.saveVisualSettings = async function () {
+    if (!window.currentActiveChatId) return;
+
+    // 保存当前输入框中的别名/群名
+    if (currentVisualTargetId) {
+        ensureTemp();
+        tempVisualData[currentVisualTargetId].alias = document.getElementById('visual-alias-input').value.trim();
+    }
+
+    // 检查是否有群设置变化
+    let updateData = { visualOverrides: tempVisualData };
+
+    // 特殊处理：如果修改了 GROUP 的 alias，也要同步更新 chat.name
+    if (tempVisualData['GROUP'] && tempVisualData['GROUP'].alias) {
+        updateData.name = tempVisualData['GROUP'].alias;
+    }
+
+    await window.dbSystem.chats.update(window.currentActiveChatId, updateData);
+
+    alert("设置已应用");
+
+    // 刷新聊天页
+    if (window.chatScroller) {
+        window.openChatDetail(window.currentActiveChatId);
+    }
+    // 刷新消息列表（因为群头像/群名可能变了）
+    if (window.renderChatUI) window.renderChatUI();
+
+    window.closeSubPage('visual');
+};
+/* =========================================
+   [新增] 世界书 (World Book) 逻辑
+   ========================================= */
+
+let currentWbTab = 'global'; // 'global' or 'local'
+let currentWbCatId = 'all';  // 当前选中的分类ID，'all' 表示全部
+let isWbSelectMode = false;  // 是否处于批量选择模式
+let selectedWbIds = new Set(); // 选中的ID集合
+
+// 1. 初始化入口：切换Tab
+window.switchWorldBookTab = async function (tab) {
+    currentWbTab = tab;
+    // UI 切换
+    document.getElementById('wb-tab-global').className = tab === 'global' ? 'avatar-tab active' : 'avatar-tab';
+    document.getElementById('wb-tab-local').className = tab === 'local' ? 'avatar-tab active' : 'avatar-tab';
+
+    // 重置状态
+    currentWbCatId = 'all';
+    exitWbSelectMode();
+
+    // 重新加载分类栏
+    await renderCategoryBar();
+
+    // [修改] 使用虚拟列表初始化
+    if (window.initWbScroller) {
+        window.initWbScroller(currentWbTab, currentWbCatId);
+    }
+};
+
+// 2. 渲染分类栏 (Horizontal Bar)
+async function renderCategoryBar() {
+    const container = document.getElementById('wb-category-bar');
+    const categories = await window.dbSystem.getCategories(currentWbTab);
+
+    // 渲染 "全部" 胶囊
+    let html = `
+        <div class="wb-cat-pill ${currentWbCatId === 'all' ? 'active' : ''}" 
+             onclick="switchWbCategory('all')">全部</div>`;
+
+    // 渲染数据库里的分类
+    categories.forEach(cat => {
+        html += `
+        <div class="wb-cat-pill ${currentWbCatId === cat.id ? 'active' : ''}" 
+             onclick="switchWbCategory(${cat.id})">${cat.name}</div>`;
+    });
+
+    // 渲染 "添加/管理" 按钮
+    html += `<div class="wb-cat-add-btn" onclick="openCategoryManager()">+</div>`;
+
+    container.innerHTML = html;
+}
+
+// 3. 切换分类
+window.switchWbCategory = async function (catId) {
+    currentWbCatId = catId;
+    await renderCategoryBar(); // 刷新高亮
+
+    // [修改] 使用虚拟列表初始化
+    if (window.initWbScroller) {
+        window.initWbScroller(currentWbTab, currentWbCatId);
+    }
+};
+
+
+
+// --- 批量操作逻辑 ---
+
+// 切换选择模式
+/* --- 替换 js/main.js 中的 window.toggleWbSelectMode --- */
+
+window.toggleWbSelectMode = function () {
+    isWbSelectMode = !isWbSelectMode;
+    const btn = document.getElementById('wb-btn-select');
+    const addBtn = document.getElementById('wb-btn-add');
+    const bottomBar = document.getElementById('wb-bottom-bar');
+
+    if (isWbSelectMode) {
+        // 选中模式：图标变色或变成“取消”图标
+        btn.innerHTML = `<svg viewBox="0 0 24 24" width="26" height="26" fill="#333"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>`;
+        addBtn.style.display = 'none';
+        bottomBar.classList.add('active');
+        selectedWbIds.clear();
+    } else {
+        // 恢复为“多选”图标
+        btn.innerHTML = `<svg viewBox="0 0 24 24" width="26" height="26" fill="currentColor"><path d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z"/></svg>`;
+        addBtn.style.display = 'flex';
+        bottomBar.classList.remove('active');
+        selectedWbIds.clear();
+    }
+
+    // 【修改点】：不再调用 renderWorldBookList()，而是刷新虚拟列表以显示/隐藏 Checkbox
+    if (window.refreshWbScroller) {
+        window.refreshWbScroller();
+    }
+};
+
+window.exitWbSelectMode = function () {
+    if (isWbSelectMode) toggleWbSelectMode();
+};
+
+// 点击单项 (在选择模式下)
+window.toggleWbSelection = function (id, el) {
+    if (selectedWbIds.has(id)) {
+        selectedWbIds.delete(id);
+        el.classList.remove('checked');
+    } else {
+        selectedWbIds.add(id);
+        el.classList.add('checked');
+    }
+};
+
+// 批量删除
+window.batchDeleteWb = async function () {
+    if (selectedWbIds.size === 0) return alert("请先选择词条");
+    if (!confirm(`确定要删除选中的 ${selectedWbIds.size} 条设定吗？`)) return;
+
+    await window.dbSystem.deleteWorldBooks(Array.from(selectedWbIds));
+    toggleWbSelectMode(); // 退出模式并刷新
+};
+
+// 打开批量移动弹窗
+window.openWbMoveModal = async function () {
+    if (selectedWbIds.size === 0) return alert("请先选择词条");
+
+    const categories = await window.dbSystem.getCategories(currentWbTab);
+    const listEl = document.getElementById('move-cat-list');
+
+    listEl.innerHTML = categories.map(c => `
+        <div onclick="confirmBatchMove(${c.id})" 
+             style="padding:15px; border-bottom:1px solid #eee; cursor:pointer; display:flex; justify-content:space-between;">
+             <span>${c.name}</span>
+        </div>
+    `).join('');
+
+    document.getElementById('modal-wb-move').style.display = 'flex';
+};
+
+window.confirmBatchMove = async function (targetCatId) {
+    await window.dbSystem.moveWorldBooks(Array.from(selectedWbIds), targetCatId);
+    document.getElementById('modal-wb-move').style.display = 'none';
+    toggleWbSelectMode(); // 退出并刷新
+};
+
+// --- 分类管理逻辑 ---
+
+window.openCategoryManager = async function () {
+    const modal = document.getElementById('modal-cat-mgr');
+    modal.style.display = 'flex';
+    renderCatMgrList();
+};
+
+async function renderCatMgrList() {
+    const listEl = document.getElementById('cat-mgr-list');
+    const categories = await window.dbSystem.getCategories(currentWbTab);
+
+    listEl.innerHTML = categories.map(c => {
+        // "未分类" 不允许删除
+        const isDefault = (c.name === '未分类' || c.name === '默认');
+
+        // [修改] 使用 SVG 垃圾桶图标
+        const delBtn = isDefault ? '<div style="width:32px;"></div>' : // 占位保持对齐 
+            `<div class="cat-mgr-del" onclick="deleteCategory(${c.id})" style="padding:4px; display:flex; align-items:center;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FF3B30" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+            </div>`;
+
+        return `
+        <div class="cat-mgr-item">
+            <span class="cat-mgr-name">${c.name}</span>
+            ${delBtn}
+        </div>`;
+    }).join('');
+}
+
+window.addNewCategory = async function () {
+    const input = document.getElementById('new-cat-name');
+    const name = input.value.trim();
+    if (!name) return;
+
+    await window.dbSystem.addCategory(name, currentWbTab);
+    input.value = '';
+    renderCatMgrList(); // 刷新管理列表
+    renderCategoryBar(); // 刷新外面横条
+};
+
+window.deleteCategory = async function (id) {
+    if (!confirm("删除分类后，内容将移入'未分类'。继续吗？")) return;
+
+    // 找到目标分类 (未分类)
+    const cats = await window.dbSystem.getCategories(currentWbTab);
+    const defaultCat = cats.find(c => c.name === '未分类' || c.name === '默认');
+
+    if (defaultCat) {
+        const books = await window.dbSystem.worldbooks.where('categoryId').equals(id).toArray();
+        const ids = books.map(b => b.id);
+        if (ids.length > 0) {
+            await window.dbSystem.moveWorldBooks(ids, defaultCat.id);
+        }
+    }
+
+    await window.dbSystem.deleteCategory(id);
+    renderCatMgrList();
+    renderCategoryBar();
+    if (currentWbCatId === id) switchWbCategory('all');
+};
+
+
+// --- 修改：编辑页面的加载与保存 (适配分类) ---
+
+// [修改] 打开编辑页
+window.openWorldBookEdit = async function (id = null) {
+    window.openApp('worldbook-edit');
+    currentWbEditId = id;
+
+    // 获取当前类型
+    const currentEditType = id ? (await window.dbSystem.worldbooks.get(id)).type : currentWbTab;
+    const categories = await window.dbSystem.getCategories(currentEditType);
+    const select = document.getElementById('wb-category-select');
+
+    // 渲染下拉框
+    select.innerHTML = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+
+    const title = id ? "编辑词条" : "新建词条";
+    document.getElementById('wb-edit-title').innerText = title;
+
+    if (id) {
+        // === 编辑模式 ===
+        const entry = await window.dbSystem.worldbooks.get(id);
+        // ... (保持原有的回显代码: name, content, keys, constant, position, order) ...
+        document.getElementById('wb-name').value = entry.name;
+        document.getElementById('wb-content').value = entry.content;
+        document.getElementById('wb-keys').value = entry.keys ? entry.keys.join(', ') : '';
+        document.getElementById('wb-constant').checked = entry.constant;
+        document.getElementById('wb-position').value = entry.position || 'top';
+        document.getElementById('wb-order').value = entry.order || 100;
+
+        // 选中保存的分类
+        if (entry.categoryId) select.value = entry.categoryId;
+
+        document.getElementById('btn-del-wb').style.display = 'flex';
+        toggleWbKeywords(document.getElementById('wb-constant'));
+        if (typeof switchWbEditType === 'function') switchWbEditType(entry.type);
+
+    } else {
+        // === 新建模式 ===
+        // ... (保持原有的重置代码) ...
+        document.getElementById('wb-name').value = '';
+        document.getElementById('wb-content').value = '';
+        document.getElementById('wb-keys').value = '';
+        document.getElementById('wb-constant').checked = false;
+        document.getElementById('wb-position').value = 'top';
+        document.getElementById('wb-order').value = 100;
+
+        // [核心修复] 默认选中逻辑
+        if (currentWbCatId !== 'all') {
+            // 如果外面选了具体分类，就用外面的
+            select.value = currentWbCatId;
+        } else {
+            // 如果外面是“全部”，则尝试选中“未分类”
+            const defaultCat = categories.find(c => c.name === '未分类' || c.name === '默认');
+            if (defaultCat) select.value = defaultCat.id;
+        }
+
+        document.getElementById('btn-del-wb').style.display = 'none';
+        document.getElementById('wb-keyword-group').style.display = 'block';
+        if (typeof switchWbEditType === 'function') switchWbEditType(currentWbTab);
+    }
+};
+
+// [新增辅助] 编辑页切换类型时，也要刷新分类下拉框
+window.switchWbEditType = async function (type) {
+    // UI 样式切换
+    const segGlobal = document.getElementById('wb-edit-segment-global');
+    const segLocal = document.getElementById('wb-edit-segment-local');
+    if (type === 'global') {
+        segGlobal.classList.add('active'); segLocal.classList.remove('active');
+    } else {
+        segGlobal.classList.remove('active'); segLocal.classList.add('active');
+    }
+
+    // 刷新分类下拉框
+    const categories = await window.dbSystem.getCategories(type);
+    const select = document.getElementById('wb-category-select');
+    // 保持当前选中的值（如果兼容），或者切到第一个
+    const oldVal = select.value;
+    select.innerHTML = categories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+    // 尝试恢复选中，如果不行就默认第一个
+    // 注意：如果是新建，我们无法知道 oldVal 是否属于新 Type，所以简单处理
+};
+
+
+// [修改] 保存逻辑
+window.saveWorldBookEntry = async function () {
+    const name = document.getElementById('wb-name').value.trim();
+    const content = document.getElementById('wb-content').value.trim();
+    const isConstant = document.getElementById('wb-constant').checked;
+    const keysStr = document.getElementById('wb-keys').value.trim();
+    const position = document.getElementById('wb-position').value;
+    const order = parseInt(document.getElementById('wb-order').value) || 100;
+
+    // 获取分类ID (必须转Int)
+    const categoryId = parseInt(document.getElementById('wb-category-select').value);
+
+    if (!name || !content) return alert("名称和内容不能为空");
+    if (!categoryId) return alert("请至少创建一个分类 (前往管理页)");
+
+    const keys = keysStr ? keysStr.split(/[,，]/).map(k => k.trim()).filter(k => k) : [];
+
+    const segGlobal = document.getElementById('wb-edit-segment-global');
+    const finalType = (segGlobal && segGlobal.classList.contains('active')) ? 'global' : 'local';
+
+    const data = {
+        name,
+        content,
+        constant: isConstant,
+        keys,
+        position,
+        order,
+        type: finalType,
+        categoryId: categoryId,
+        updated: new Date()
+    };
+
+    if (currentWbEditId) {
+        await window.dbSystem.worldbooks.update(currentWbEditId, data);
+    } else {
+        await window.dbSystem.worldbooks.add(data);
+    }
+
+    window.closeApp('worldbook-edit');
+
+    // 【修改点】：刷新逻辑改为操作虚拟列表
+    if (currentWbTab !== finalType) {
+        // 如果你添加的类型和当前显示的Tab不一样（比如在局部Tab加了全局设定），就切换Tab
+        // switchWorldBookTab 内部已经调用了 initWbScroller，所以不用手动调
+        switchWorldBookTab(finalType);
+    } else {
+        // 如果类型一样，直接重新初始化当前列表
+        if (window.initWbScroller) {
+            window.initWbScroller(currentWbTab, currentWbCatId);
+        }
+    }
+};
+
+// --- 挂载逻辑 (Mounting) ---
+
+// 1. 打开挂载选择器
+window.openWorldBookMountSelector = async function () {
+    if (!window.currentActiveChatId) return alert("未找到当前会话ID");
+    const chatId = parseInt(window.currentActiveChatId);
+    const chat = await window.dbSystem.chats.get(chatId);
+    if (!chat) return;
+
+    document.getElementById('modal-wb-mount').style.display = 'flex';
+
+    // 1. 准备数据
+    let mountedIds = (chat.mountedWorldBooks || []).map(id => parseInt(id));
+
+    // 获取分类 和 所有局部设定
+    const categories = await window.dbSystem.getCategories('local');
+    const books = await window.dbSystem.worldbooks.where('type').equals('local').toArray();
+
+    const listEl = document.getElementById('wb-mount-list');
+    if (books.length === 0) {
+        listEl.innerHTML = '<div style="padding:20px;text-align:center;color:#999">没有可用的局部设定</div>';
+        return;
+    }
+
+    // 2. 分组逻辑
+    // 结构: { catId: { info: CategoryObj, items: [BookObj...] } }
+    const groups = {};
+
+    // 先初始化所有分类容器
+    categories.forEach(c => {
+        groups[c.id] = { info: c, items: [] };
+    });
+    // 添加一个"未分类"容器
+    groups['uncat'] = { info: { id: 'uncat', name: '未分类' }, items: [] };
+
+    // 将书分配到组
+    books.forEach(b => {
+        // 如果有分类且分类存在，放进去；否则放进未分类
+        if (b.categoryId && groups[b.categoryId]) {
+            groups[b.categoryId].items.push(b);
+        } else {
+            groups['uncat'].items.push(b);
+        }
+    });
+
+    // 3. 渲染 HTML
+    let html = '';
+
+    // 辅助：生成组 HTML
+    const renderGroup = (group) => {
+        if (group.items.length === 0) return ''; // 空分类不显示
+
+        // 检查该组是否全选 (用于初始化分类勾选框状态)
+        // 逻辑：如果组内所有 items 都在 mountedIds 里，则分类框打勾
+        const allChecked = group.items.every(b => mountedIds.includes(b.id));
+        const groupCheckState = allChecked ? 'checked' : '';
+
+        // 生成子项 HTML
+        const itemsHtml = group.items.map(b => {
+            const isChecked = mountedIds.includes(b.id) ? 'checked' : '';
+            return `
+            <label class="wb-mount-subitem">
+                <input type="checkbox" class="wb-mount-cb group-${group.info.id}" value="${b.id}" ${isChecked} 
+                       onchange="updateGroupCheckState('${group.info.id}')">
+                <div class="wb-mount-info">
+                    <div class="name">${b.name}</div>
+                    <div class="preview">${b.content.substring(0, 15)}...</div>
+                </div>
+            </label>`;
+        }).join('');
+
+        return `
+        <div class="wb-mount-group">
+            <div class="wb-mount-group-header">
+                <label style="display:flex; align-items:center; width:100%; cursor:pointer;">
+                    <input type="checkbox" id="cat-cb-${group.info.id}" ${groupCheckState} 
+                           onchange="toggleMountGroup(this, '${group.info.id}')"
+                           style="margin-right:10px; accent-color:var(--theme-purple);">
+                    <span style="font-weight:bold; color:#555;">${group.info.name}</span>
+                    <span style="font-size:12px; color:#999; margin-left:auto;">${group.items.length}项</span>
+                </label>
+            </div>
+            <div class="wb-mount-group-body">
+                ${itemsHtml}
+            </div>
+        </div>`;
+    };
+
+    // 先渲染有分类的
+    categories.forEach(c => {
+        html += renderGroup(groups[c.id]);
+    });
+    // 最后渲染未分类
+    html += renderGroup(groups['uncat']);
+
+    listEl.innerHTML = html;
+};
+
+// [新增] 辅助：点击分类全选/全不选
+window.toggleMountGroup = function (catCheckbox, groupId) {
+    const isChecked = catCheckbox.checked;
+    // 找到该组下面所有的子 checkbox
+    const subCBs = document.querySelectorAll(`.group-${groupId}`);
+    subCBs.forEach(cb => {
+        cb.checked = isChecked;
+    });
+};
+
+// [新增] 辅助：点击子项时，检查是否需要更新分类的全选状态
+// (可选功能：为了体验更好，如果子项取消了一个，分类头也应该取消)
+window.updateGroupCheckState = function (groupId) {
+    const catCheckbox = document.getElementById(`cat-cb-${groupId}`);
+    if (!catCheckbox) return;
+
+    const subCBs = document.querySelectorAll(`.group-${groupId}`);
+    // 检查是否全都选中了
+    let all = true;
+    for (let i = 0; i < subCBs.length; i++) {
+        if (!subCBs[i].checked) {
+            all = false;
+            break;
+        }
+    }
+    catCheckbox.checked = all;
+};
+
+// 2. 保存挂载
+window.saveWbMount = async function () {
+    if (!window.currentActiveChatId) return;
+    const chatId = parseInt(window.currentActiveChatId);
+
+    // [关键] 只获取 class="wb-mount-cb" 的复选框 (即具体的书，不包含分类头)
+    const checkboxes = document.querySelectorAll('.wb-mount-cb');
+    const selectedIds = [];
+
+    checkboxes.forEach(cb => {
+        if (cb.checked) {
+            selectedIds.push(parseInt(cb.value));
+        }
+    });
+
+    try {
+        await window.dbSystem.chats.update(chatId, { mountedWorldBooks: selectedIds });
+
+        // 更新设置页文字
+        const el = document.getElementById('wb-mount-status');
+        if (el) el.innerText = selectedIds.length > 0 ? `已挂载 ${selectedIds.length} 个局部设定` : "未挂载局部设定";
+        if (el) el.style.color = selectedIds.length > 0 ? "var(--theme-purple)" : "#999";
+
+        document.getElementById('modal-wb-mount').style.display = 'none';
+    } catch (e) {
+        console.error(e);
+        alert("保存失败");
+    }
+};
+
+// 3. 在 settings 打开时刷新状态
+// (你需要手动去 main.js 的 openChatSettings 函数里加一行调用 updateWbMountStatus())
+window.updateWbMountStatus = async function (chatId) {
+    const chat = await window.dbSystem.chats.get(chatId);
+    const count = (chat.mountedWorldBooks || []).length;
+    const el = document.getElementById('wb-mount-status');
+    if (el) el.innerText = count > 0 ? `已挂载 ${count} 个局部设定` : "未挂载局部设定";
+};
+
+/* =========================================
+   [核心] AI 认知注入逻辑 (Prompt Injection)
+   ========================================= */
+
+// 这个函数需要在 triggerAIResponse 内部被调用
+window.injectWorldInfo = async function (chat, historyMessages) {
+    // console.log("--- 开始世界书注入流程 ---"); // 调试日志
+
+    // 1. 获取所有候选词条
+    // A. 全局设定
+    const globalBooks = await window.dbSystem.worldbooks.where('type').equals('global').toArray();
+    // console.log(`1. 找到全局设定: ${globalBooks.length} 条`);
+
+    // B. 局部设定 (修复点：使用 bulkGet 替代 anyOf，更稳定)
+    const mountedIds = chat.mountedWorldBooks || [];
+    // console.log(`2. 当前会话挂载ID:`, mountedIds);
+
+    let localBooks = [];
+    if (mountedIds.length > 0) {
+        // bulkGet 返回的顺序对应 ID 顺序，如果 ID 不存在会返回 undefined，需要过滤掉
+        const results = await window.dbSystem.worldbooks.bulkGet(mountedIds);
+        localBooks = results.filter(item => !!item);
+    }
+    // console.log(`3. 实际读取到局部设定: ${localBooks.length} 条`);
+
+    const allCandidates = [...globalBooks, ...localBooks];
+    if (allCandidates.length === 0) {
+        // console.log("没有候选词条，跳过注入");
+        return { top: "", bottom: "" };
+    }
+
+    // 2. 扫描触发 (Trigger Scan)
+    // 获取最近 10 条消息作为上下文
+    const scanText = historyMessages.slice(-10).map(m => m.content).join('\n').toLowerCase();
+
+    let activeEntries = [];
+
+    for (const book of allCandidates) {
+        let isHit = false;
+        let reason = "";
+
+        // 情况一：常驻 (Constant) -> 必定注入
+        if (book.constant) {
+            isHit = true;
+            reason = "常驻激活";
+        }
+        // 情况二：关键词触发
+        else if (book.keys && book.keys.length > 0) {
+            // 遍历所有关键词，只要有一个匹配就命中
+            for (const key of book.keys) {
+                // 简单的包含匹配 (大小写已在外部转为 lower)
+                if (scanText.includes(key.toLowerCase())) {
+                    isHit = true;
+                    reason = `命中关键词 [${key}]`;
+                    break;
+                }
+            }
+        }
+
+        if (isHit) {
+            // console.log(`✅ 激活词条: [${book.name}] (${book.type}) - 原因: ${reason}`);
+            activeEntries.push(book);
+        } else {
+            // console.log(`❌ 忽略词条: [${book.name}] - 未满足触发条件`);
+        }
+    }
+
+    // 3. 排序 (Order 大的在后面)
+    activeEntries.sort((a, b) => a.order - b.order);
+
+    // 4. 构建 Prompt
+    let topPrompts = [];
+    let bottomPrompts = [];
+
+    for (const entry of activeEntries) {
+        const text = `【${entry.name}】：${entry.content}`;
+        if (entry.position === 'top') {
+            topPrompts.push(text);
+        } else {
+            bottomPrompts.push(text);
+        }
+    }
+
+    const result = {
+        top: topPrompts.length > 0 ? `\n[世界基础认知/绝对公理]\n${topPrompts.join('\n')}\n` : "",
+        bottom: bottomPrompts.length > 0 ? `\n[当前场景/潜意识关联]\n${bottomPrompts.join('\n')}\n` : ""
+    };
+
+    // console.log("--- 注入流程结束 ---");
+    return result;
+};
+// [新增] 保存聊天记忆条数设置
+window.saveContextLimit = async function (val) {
+    if (!window.currentActiveChatId) return;
+
+    // HTML 中传入的是 this.value (字符串)，所以直接转数字
+    let limitNum = parseInt(val);
+
+    // 简单的校验：不能小于 1，如果用户清空了或者乱填，就存为 25 (默认值)
+    if (isNaN(limitNum) || limitNum < 1) {
+        limitNum = 25;
+    }
+
+    // 写入数据库
+    await window.dbSystem.chats.update(parseInt(window.currentActiveChatId), {
+        historyLimit: limitNum
+    });
+
+    console.log(`短期记忆条数已更新为: ${limitNum}`);
+
+    // 可选：给个轻提示
+    // alert("记忆条数已保存");
+};
+function switchWbEditType(type) {
+    const segGlobal = document.getElementById('wb-edit-segment-global');
+    const segLocal = document.getElementById('wb-edit-segment-local');
+
+    if (!segGlobal || !segLocal) return;
+
+    if (type === 'global') {
+        segGlobal.classList.add('active');
+        segLocal.classList.remove('active');
+    } else {
+        segGlobal.classList.remove('active');
+        segLocal.classList.add('active');
+    }
+}
+/* --- js/main.js 末尾添加 --- */
+
+// --- 消息长按菜单逻辑 ---
+
+let activeMenuMsgId = null; // 记录当前正在操作哪条消息
+let activeMenuMsgText = "";
+
+// 1. 显示菜单
+window.showMsgMenu = function (x, y, bubbleEl) {
+    activeMenuMsgId = currentLongPressMsgId; // 从 render.js 的全局变量获取
+    activeMenuMsgText = currentLongPressText;
+
+    const overlay = document.getElementById('msg-context-menu-overlay');
+    const menu = document.getElementById('msg-menu-box');
+
+    overlay.style.display = 'block';
+
+    // 智能定位：
+    // 如果点击位置太靠右，菜单往左偏
+    // 如果点击位置太靠下，菜单往上偏
+    const winW = window.innerWidth;
+    const winH = window.innerHeight;
+    const menuW = 120; // 估算宽度
+    const menuH = 100; // 估算高度
+
+    let left = x;
+    let top = y - 20; // 默认手指上方一点
+
+    if (x + menuW > winW - 10) left = winW - menuW - 10;
+    if (y + menuH > winH - 10) top = y - menuH;
+
+    menu.style.left = left + 'px';
+    menu.style.top = top + 'px';
+};
+
+// 2. 隐藏菜单
+window.hideMsgMenu = function () {
+    document.getElementById('msg-context-menu-overlay').style.display = 'none';
+};
+
+// 3. 执行删除
+window.handleDeleteMsg = async function () {
+    if (!activeMenuMsgId || !window.currentActiveChatId) return;
+
+    // 1. 数据库删除消息
+    await window.dbSystem.deleteMessage(activeMenuMsgId);
+
+    // 2. UI 移除 (调用刚才加强过的 render.js 方法)
+    if (window.chatScroller) {
+        window.chatScroller.removeMessageById(activeMenuMsgId);
+    }
+
+    // --- 【核心修复】更新“最后一条消息” ---
+    // 重新查一下这个会话最新的消息
+    const latestMsgs = await window.dbSystem.getMessagesPaged(window.currentActiveChatId, 1, 0);
+    let newLastMsg = "暂无消息";
+    if (latestMsgs.length > 0) {
+        newLastMsg = latestMsgs[latestMsgs.length - 1].text; // 取最新一条
+    }
+
+    // 更新会话表的 lastMsg 字段
+    await window.dbSystem.chats.update(window.currentActiveChatId, {
+        lastMsg: newLastMsg,
+        updated: new Date() // 顺便更新时间
+    });
+
+    // 3. 【核心修复】静默刷新首页列表
+    // 这样当你退出聊天窗口时，看到的列表已经是新的了
+    if (window.renderChatUI) {
+        window.renderChatUI();
+    }
+
+    // 关闭菜单
+    hideMsgMenu();
+};
+
+// 4. 执行复制
+window.handleCopyMsg = function () {
+    if (activeMenuMsgText) {
+        navigator.clipboard.writeText(activeMenuMsgText).then(() => {
+            // 可以加个简单的 Toast 提示，这里用 alert 替代或者静默
+            // alert('已复制'); 
+        });
+    }
+    hideMsgMenu();
 };

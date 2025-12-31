@@ -551,7 +551,9 @@ textarea.input-style {
     font-size: 15px;
     line-height: 1.5;
     word-wrap: break-word;
-    /* 防止长英文撑破 */
+
+    /* 🔴 必须加这一行！否则换行符会被忽略，显示成一行 🔴 */
+    white-space: pre-wrap;
 }
 
 /* 对方的消息：白色 */
@@ -1125,4 +1127,1235 @@ select.setting-input {
     border-bottom: 2px solid #fff;
     transform: rotate(-45deg);
     margin-top: -2px;
+}
+
+/* --- style.css 新增部分 --- */
+
+/* 1. iOS 风格开关 (Switch) */
+.ios-switch {
+    position: relative;
+    display: inline-block;
+    width: 50px;
+    height: 30px;
+}
+
+.ios-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+}
+
+.slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #e4e4e4;
+    transition: .4s;
+    border-radius: 30px;
+}
+
+.slider:before {
+    position: absolute;
+    content: "";
+    height: 26px;
+    width: 26px;
+    left: 2px;
+    bottom: 2px;
+    background-color: white;
+    transition: .4s;
+    border-radius: 50%;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+input:checked+.slider {
+    background-color: var(--theme-purple);
+}
+
+input:checked+.slider:before {
+    transform: translateX(20px);
+}
+
+/* 2. 设置页面的卡片风格微调 */
+.settings-card {
+    background: #fff;
+    border-radius: 16px;
+    margin: 16px;
+    box-shadow: var(--card-shadow);
+    overflow: hidden;
+}
+
+.settings-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 16px;
+    border-bottom: 1px solid #f9f9f9;
+}
+
+.settings-item:last-child {
+    border-bottom: none;
+}
+
+.settings-text h4 {
+    margin: 0 0 4px 0;
+    font-size: 16px;
+    font-weight: 500;
+    color: var(--theme-text);
+}
+
+.settings-text p {
+    margin: 0;
+    font-size: 12px;
+    color: #999;
+}
+
+/* --- V4.0 完美复刻版 CSS --- */
+
+.city-info-box {
+    position: relative;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 30px 10px;
+    /* 增加高度，给曲线留空间 */
+    background: transparent;
+    overflow: visible;
+}
+
+/* 1. 背景层：S型航线 (作为背景铺在底下) */
+.flight-connector {
+    position: absolute;
+    top: 0;
+    /* 让线条容器稍微宽于父容器，制造出线条连接到卡片背后的错觉 */
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.flight-path-svg {
+    /* 这里的宽度决定了曲线的陡峭程度，120% 可以让曲线更平缓 */
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    /* 允许阴影或线条端点溢出 */
+}
+
+/* 1. 轨道底色 (宽线条) */
+.flight-line-bg {
+    fill: none;
+    stroke: #EAEBF9;
+    /* 极淡的紫色，作为跑道背景 */
+    stroke-width: 16;
+    /* 宽度设大一点 */
+    stroke-linecap: round;
+}
+
+/* 2. 轨道虚线 (上面的装饰线) */
+.flight-line-dash {
+    fill: none;
+    stroke: #C0C4E8;
+    /* 稍深一点的紫色 */
+    stroke-width: 3;
+    /* 细线条 */
+    stroke-dasharray: 12 10;
+    /* 虚线间隔 */
+    stroke-linecap: round;
+    /* 增加一个内部发光效果，让它看起来不像死板的线条 */
+    filter: drop-shadow(0 1px 2px rgba(255, 255, 255, 0.8));
+}
+
+/* 飞机容器位置微调 */
+.plane-wrapper {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    /* 稍微旋转一下角度，贴合曲线走势 */
+    transform: translate(-50%, -50%) rotate(-10deg);
+    width: 44px;
+    height: 44px;
+    z-index: 2;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    /* 给飞机加个强力阴影，制造悬浮感 */
+    filter: drop-shadow(0 8px 12px rgba(155, 158, 206, 0.5));
+}
+
+/* 飞机图标本体 */
+.plane-wrapper svg {
+    /* 使用莫兰迪紫渐变色感觉 (纯色模拟) */
+    fill: #9B9ECE;
+    stroke: #fff;
+    stroke-width: 1px;
+    width: 36px;
+    height: 36px;
+    transform: rotate(45deg);
+    /* 让飞机头朝向右上方 */
+}
+
+/* 2. 城市卡片 (核心复刻) */
+.city-card {
+    position: relative;
+    z-index: 10;
+    /* 浮在最高层 */
+    background: #fff;
+    width: 46%;
+    /* 宽度占接近一半 */
+    height: 100px;
+    border-radius: 20px;
+    /* 大圆角 */
+    box-shadow: 0 8px 25px rgba(155, 158, 206, 0.15);
+    /* 漂亮的弥散阴影 */
+    border: 1px solid #fff;
+    display: flex;
+    flex-direction: column;
+    /* 改为上下布局，为了放头部和内容 */
+    justify-content: center;
+    padding: 12px;
+    box-sizing: border-box;
+    transition: transform 0.2s;
+}
+
+.city-card:active {
+    transform: scale(0.96);
+}
+
+/* 卡片内部布局：头部 (图标 + 标题) */
+.city-card-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+/* 左侧圆圈图标 (图里的城堡/大厦) */
+.city-icon-bg {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: #F4F4FF;
+    /* 淡紫色背景 */
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 8px;
+    flex-shrink: 0;
+}
+
+.city-label-group {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    overflow: hidden;
+    /* 防止文字溢出 */
+}
+
+/* 小标题：我的位置 + 蓝勾 */
+.city-label-title {
+    font-size: 10px;
+    color: #999;
+    display: flex;
+    align-items: center;
+    margin-bottom: 2px;
+}
+
+.verified-icon {
+    width: 12px;
+    height: 12px;
+    fill: #5AC8FA;
+    /* 认证蓝 */
+    margin-left: 3px;
+}
+
+/* 大标题：城市名 (北京/霍格沃茨) */
+.city-name-main {
+    font-size: 15px;
+    font-weight: 700;
+    color: #333;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* 底部信息：映射 + 天气 */
+.city-name-sub {
+    font-size: 10px;
+    color: #9B9ECE;
+    margin-left: 4px;
+    margin-bottom: 2px;
+}
+
+.city-weather-info {
+    font-size: 11px;
+    color: #666;
+    margin-left: 4px;
+    font-weight: 500;
+}
+
+.city-card-wide {
+    background: #fff;
+    width: 100%;
+    /* 占满一行 */
+    border-radius: 16px;
+    box-shadow: 0 4px 15px rgba(155, 158, 206, 0.1);
+    padding: 15px;
+    box-sizing: border-box;
+    margin-bottom: 0;
+    /* 不留额外边距 */
+    transition: transform 0.2s;
+    border: 1px solid #fff;
+}
+
+.city-card-wide:active {
+    transform: scale(0.98);
+    background: #fafafa;
+}
+
+/* 列表样式 (之前提供的，保持不变) */
+.env-member-card {
+    background: #fff;
+    border-radius: 14px;
+    /* 圆角稍微比主卡片小一点，显精致 */
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    box-shadow: 0 2px 10px rgba(155, 158, 206, 0.1);
+    /* 统一阴影风格 */
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    cursor: pointer;
+}
+
+.env-member-card:active {
+    transform: scale(0.98);
+    background: #fafafa;
+}
+
+/* 验证通过显示淡紫色边框 */
+.env-member-card.is-valid {
+    border-color: #EAEBF9;
+}
+
+/* 上半部分：名字 + 时间 */
+.env-card-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid #f9f9f9;
+    /* 关键：那条淡雅的分割线 */
+}
+
+.env-name-box {
+    display: flex;
+    align-items: center;
+    font-size: 15px;
+    font-weight: 600;
+    color: #444;
+}
+
+/* 状态小点 */
+.env-status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    margin-right: 8px;
+    background: #eee;
+}
+
+.env-status-dot.active {
+    background: #88BFA0;
+    /* 在线/已设置绿 */
+    box-shadow: 0 0 4px rgba(136, 191, 160, 0.4);
+}
+
+.env-time-text {
+    font-size: 16px;
+    /* 时间大一点，突出显示 */
+    font-weight: 600;
+    color: var(--theme-purple);
+    /* 莫兰迪紫 */
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    /* 数字字体优化 */
+}
+
+/* 下半部分：地点 + 天气 */
+.env-card-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 12px;
+}
+
+.env-loc-text {
+    color: #999;
+    display: flex;
+    align-items: center;
+}
+
+.env-weather-text {
+    color: #aaa;
+}
+
+/* 映射的小字 */
+.real-map-tag {
+    background: #F4F4FF;
+    color: #9B9ECE;
+    padding: 2px 6px;
+    border-radius: 4px;
+    margin-left: 6px;
+    font-size: 10px;
+}
+
+.env-list-item {
+    margin-bottom: 12px !important;
+    /* 卡片之间留空隙 */
+    cursor: pointer;
+}
+
+/* 名字前面的在线小绿点 */
+.char-status-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    margin-right: 6px;
+    background: #eee;
+    transform: translateY(-1px);
+    /* 微调对齐 */
+}
+
+.char-status-dot.active {
+    background: #88BFA0;
+    /* 激活时的绿色 */
+    box-shadow: 0 0 4px rgba(136, 191, 160, 0.4);
+}
+
+/* --- [新增] 聊天窗口外观设置 (Visual Settings) --- */
+
+/* 横向滚动的人物选择栏 */
+
+
+.visual-target-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    cursor: pointer;
+    opacity: 0.6;
+    transition: all 0.2s;
+}
+
+.visual-target-item.active {
+    opacity: 1;
+    transform: scale(1.05);
+}
+
+.visual-target-item.active .avatar {
+    box-shadow: 0 0 0 2px var(--theme-purple);
+    /* 选中时的紫色光圈 */
+}
+
+/* 形状选择器 (圆/方) */
+.shape-selector {
+    display: flex;
+    background: #f0f0f5;
+    border-radius: 8px;
+    padding: 2px;
+    width: fit-content;
+}
+
+.shape-option {
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #999;
+    cursor: pointer;
+}
+
+.shape-option.active {
+    background: #fff;
+    color: var(--theme-purple);
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    font-weight: 600;
+}
+
+/* 隐藏头像的开关容器 */
+.visibility-toggle {
+    display: flex;
+    align-items: center;
+    font-size: 14px;
+    color: #666;
+}
+
+/* 滑块样式微调 */
+.morandi-slider {
+    -webkit-appearance: none;
+    width: 100%;
+    height: 4px;
+    background: #e0e0e0;
+    border-radius: 2px;
+    outline: none;
+}
+
+.morandi-slider::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 20px;
+    height: 20px;
+    background: #fff;
+    border: 2px solid var(--theme-purple);
+    border-radius: 50%;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+}
+
+/* --- [重构] 视觉设置与气泡布局修复 --- */
+
+/* 1. 彻底隐藏头像时的布局修正 */
+.msg-row.no-avatar .avatar {
+    display: none !important;
+    /* 彻底移除，不占空间 */
+}
+
+/* 对方消息，无头像时：气泡靠左 */
+.msg-row.no-avatar .msg-bubble {
+    border-top-left-radius: 8px;
+    /* 恢复圆角 */
+    margin-left: 5px;
+    /* 稍微留点边距，不要死贴着屏幕 */
+}
+
+/* 我的消息，无头像时：气泡靠右 */
+.msg-row.me.no-avatar .msg-bubble {
+    border-top-right-radius: 8px;
+    margin-right: 5px;
+}
+
+/* 2. 视觉设置页面的头部列表 (iOS 风格) */
+/* style.css 中 */
+.visual-target-list {
+    display: flex;
+    gap: 15px;
+
+    /* 🔴 找到这一行，进行修改 🔴 */
+    /* 原来的可能是 padding: 5px 0; */
+    padding: 15px 0;
+    /* 增加上下 padding，给头像的阴影或边框留出空间 */
+
+    overflow-x: auto;
+    scroll-behavior: smooth;
+
+    /* 隐藏滚动条保持美观 */
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+}
+
+.visual-target-list::-webkit-scrollbar {
+    display: none;
+}
+
+.visual-target-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    min-width: 56px;
+    /* 保证点击区域 */
+    opacity: 0.5;
+    transition: all 0.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+.visual-target-item.active {
+    opacity: 1;
+    transform: scale(1.05);
+}
+
+.visual-target-item.active .avatar {
+    box-shadow: 0 0 0 3px var(--theme-purple);
+    /* 选中高亮 */
+    border: 2px solid #fff;
+    /* 增加白圈隔断，更精致 */
+}
+
+/* World Book Styles */
+
+.wb-card {
+    background: #fff;
+    border-radius: 18px;
+    /* 更圆润 */
+    padding: 16px;
+    margin-bottom: 14px;
+    box-shadow: 0 4px 16px rgba(155, 158, 206, 0.12);
+    /* 莫兰迪紫的淡阴影 */
+    position: relative;
+    border: 1px solid rgba(0, 0, 0, 0.02);
+    transition: all 0.2s cubic-bezier(0.25, 0.8, 0.25, 1);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.wb-card:active {
+    transform: scale(0.97);
+    background: #fafafa;
+}
+
+
+
+/* 头部布局 */
+.wb-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    /* 顶部对齐 */
+}
+
+.wb-title {
+    font-size: 17px;
+    font-weight: 700;
+    color: #333;
+    margin-left: 8px;
+    /* 给左侧装饰条留点空隙 */
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+/* 标签样式 (小胶囊) */
+.wb-tag {
+    font-size: 10px;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    display: inline-block;
+    vertical-align: middle;
+}
+
+.tag-const {
+    background: rgba(136, 191, 160, 0.15);
+    color: #6CAE89;
+    /* 莫兰迪绿 */
+}
+
+.tag-trig {
+    background: rgba(155, 158, 206, 0.15);
+    color: var(--theme-purple-dark);
+}
+
+/* 权重显示 */
+.wb-meta {
+    font-size: 12px;
+    color: #bbb;
+    background: #f9f9f9;
+    padding: 2px 6px;
+    border-radius: 6px;
+    font-family: monospace;
+    /* 等宽字体显示数字更好看 */
+}
+
+/* 触发词区域 */
+.wb-keys-box {
+    margin-left: 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.wb-key-pill {
+    font-size: 11px;
+    color: #888;
+    background: #F2F2F7;
+    padding: 2px 8px;
+    border-radius: 4px;
+}
+
+/* 内容预览 */
+.wb-preview {
+    font-size: 14px;
+    color: #666;
+    line-height: 1.5;
+    margin-left: 8px;
+    margin-top: 4px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    /* 最多显示2行 */
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    opacity: 0.9;
+}
+
+/* 挂载列表项美化 */
+.wb-mount-item {
+    display: flex;
+    align-items: center;
+    padding: 12px 16px;
+    background: #fff;
+    margin-bottom: 8px;
+    border-radius: 12px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.03);
+    border: 1px solid #f5f5f5;
+    transition: background 0.2s;
+}
+
+.wb-mount-item:active {
+    background: #fafafa;
+}
+
+/* 危险操作按钮 (删除) */
+.btn-danger-svg {
+    display: none;
+    /* 保持 JS 控制逻辑 */
+    align-items: center;
+    justify-content: center;
+    margin: 20px auto;
+    /* 居中，上下留白 */
+    width: 60px;
+    /* 做成圆形按钮 */
+    height: 60px;
+    background-color: #fff;
+    color: #FF3B30;
+    /* iOS 警告红 */
+    border: 1px solid rgba(255, 59, 48, 0.2);
+    /* 淡淡的红边框 */
+    border-radius: 50%;
+    /* 圆形 */
+    cursor: pointer;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    box-shadow: 0 4px 12px rgba(255, 59, 48, 0.12);
+    /* 柔和的红色阴影 */
+    -webkit-tap-highlight-color: transparent;
+    padding: 0;
+}
+
+.btn-danger-svg:active {
+    transform: scale(0.9);
+    /* 点击缩放效果 */
+    background-color: #FFF5F5;
+    /* 轻微红底色 */
+    box-shadow: 0 2px 6px rgba(255, 59, 48, 0.2);
+}
+
+/* --- iOS 分组风格设置页 (New) --- */
+
+/* 设置页背景色保持灰色，为了对比白色卡片 */
+#app-chat-settings .app-body {
+    background-color: #F2F2F7;
+    /* iOS 标准设置背景灰 */
+    padding-top: 0;
+}
+
+/* iOS 分组卡片容器 */
+.ios-group {
+    background: #fff;
+    margin: 0 16px 20px 16px;
+    /* 左右留边，下边距加大 */
+    border-radius: 12px;
+    /* iOS 风格圆角 */
+    overflow: hidden;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    /* 极淡的阴影 */
+}
+
+/* 分组标题 (可选，如果需要类似 '通用' 这种小字标题) */
+.ios-group-header {
+    margin: 0 16px 8px 32px;
+    font-size: 13px;
+    color: #888;
+    text-transform: uppercase;
+}
+
+/* 设置行样式重置 */
+.ios-group .setting-row {
+    display: flex;
+    align-items: center;
+    padding: 0 16px;
+    /* 内边距 */
+    height: 56px;
+    /* 标准高度 */
+    background: #fff;
+    border-bottom: 1px solid #E5E5EA;
+    /* iOS 分割线颜色 */
+    transition: background 0.2s;
+}
+
+/* 最后一个元素去掉分割线 */
+.ios-group .setting-row:last-child {
+    border-bottom: none;
+}
+
+.ios-group .setting-row:active {
+    background: #E5E5EA;
+}
+
+/* 图标容器 */
+.ios-icon-box {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 12px;
+    flex-shrink: 0;
+    color: #fff;
+}
+
+/* 设置文字区域 */
+.ios-text-box {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+}
+
+.ios-title {
+    font-size: 16px;
+    color: #000;
+    font-weight: 400;
+}
+
+.ios-desc {
+    font-size: 12px;
+    color: #8E8E93;
+    margin-top: 2px;
+}
+
+/* 箭头颜色 */
+.ios-arrow {
+    width: 18px;
+    height: 18px;
+    fill: #C7C7CC;
+    /* iOS 箭头灰 */
+}
+
+/* 环境面板特殊处理：放在分组内部，需要去掉默认的阴影和margin，让它融入分组 */
+.ios-group #env-settings-panel {
+    padding: 0;
+    border-top: 1px solid #E5E5EA;
+}
+
+.ios-group #env-settings-panel .city-info-box {
+    padding: 20px 16px;
+    /* 调整内部间距 */
+}
+
+/* --- 输入框样式 --- */
+.ios-value-input {
+    border: none;
+    background: transparent;
+    text-align: right;
+    font-size: 15px;
+    color: #8E8E93;
+    /* iOS 详情文字灰 */
+    width: 50px;
+    outline: none;
+    font-family: inherit;
+    padding: 0;
+}
+
+/* 移除数字输入框的上下箭头 (Chrome/Safari) */
+.ios-value-input::-webkit-inner-spin-button,
+.ios-value-input::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+/* --- style.css 底部添加 --- */
+
+/* 世界书编辑页 - 类型切换分段控制器 (莫兰迪风格) */
+.wb-edit-type-segment {
+    display: flex;
+    background-color: #F0F0F5;
+    /* 浅灰底色 */
+    border-radius: 10px;
+    padding: 2px;
+    margin-bottom: 20px;
+    /* 和下方表单留出距离 */
+    user-select: none;
+}
+
+.wb-edit-segment-item {
+    flex: 1;
+    text-align: center;
+    padding: 8px 0;
+    font-size: 14px;
+    font-weight: 600;
+    color: #888;
+    /* 默认灰色文字 */
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+/* 激活状态：莫兰迪紫背景，白字 */
+.wb-edit-segment-item.active {
+    background-color: #fff;
+    color: var(--theme-purple);
+    /* 使用现有的莫兰迪紫 */
+    box-shadow: 0 2px 6px rgba(155, 158, 206, 0.2);
+}
+
+.category-scroll-container {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 4px 2px 12px 2px;
+    /* 底部留点空隙给阴影 */
+    margin-bottom: 8px;
+    scrollbar-width: none;
+    /* 隐藏滚动条 */
+}
+
+.category-scroll-container::-webkit-scrollbar {
+    display: none;
+}
+
+/* 2. 分类胶囊 */
+.wb-cat-pill {
+    flex-shrink: 0;
+    padding: 6px 16px;
+    border-radius: 18px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #888;
+    background: #fff;
+    border: 1px solid transparent;
+    transition: all 0.2s;
+    cursor: pointer;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.02);
+}
+
+.wb-cat-pill.active {
+    background: #fff;
+    color: var(--theme-purple);
+    border-color: var(--theme-purple);
+    font-weight: 600;
+    box-shadow: 0 4px 10px rgba(155, 158, 206, 0.2);
+}
+
+/* 添加分类的加号按钮 */
+.wb-cat-add-btn {
+    flex-shrink: 0;
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background: #fff;
+    color: var(--theme-purple);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 20px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    cursor: pointer;
+}
+
+/* 3. 管理模式复选框 (默认隐藏) */
+.wb-check-overlay {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(255, 255, 255, 0.6);
+    z-index: 10;
+    display: none;
+    /* JS控制显示 */
+    align-items: center;
+    padding-left: 15px;
+    border-radius: 18px;
+    /* 和卡片圆角一致 */
+    box-sizing: border-box;
+}
+
+/* 选中状态容器高亮 */
+.wb-card.selected-mode {
+    border: 1px solid var(--theme-purple);
+    transform: scale(0.98);
+}
+
+.wb-card.selected-mode .wb-check-overlay {
+    display: flex;
+    cursor: pointer;
+}
+
+/* 圆形复选框 */
+.wb-checkbox {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 2px solid #ccc;
+    background: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+}
+
+.wb-card.checked .wb-checkbox {
+    background: var(--theme-purple);
+    border-color: var(--theme-purple);
+}
+
+.wb-card.checked .wb-checkbox::after {
+    content: '';
+    width: 10px;
+    height: 5px;
+    border-left: 2px solid #fff;
+    border-bottom: 2px solid #fff;
+    transform: rotate(-45deg) translate(1px, -1px);
+}
+
+/* 4. 底部批量操作栏 (浮动) */
+.wb-bottom-bar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: calc(60px + env(safe-area-inset-bottom));
+    background: #fff;
+    box-shadow: 0 -5px 20px rgba(0, 0, 0, 0.05);
+    display: flex;
+    justify-content: space-around;
+    align-items: center;
+    padding-bottom: env(safe-area-inset-bottom);
+    z-index: 100;
+    transform: translateY(100%);
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.wb-bottom-bar.active {
+    transform: translateY(0);
+}
+
+.wb-bar-btn {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    color: #666;
+    padding: 10px 20px;
+    cursor: pointer;
+}
+
+.wb-bar-btn.danger {
+    color: #FF3B30;
+}
+
+/* 5. 分类管理列表项 */
+.cat-mgr-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    background: #fff;
+    border-bottom: 1px solid #f5f5f5;
+    transition: background 0.2s;
+}
+
+.cat-mgr-item:last-child {
+    border-bottom: none;
+}
+
+.cat-mgr-item:active {
+    background: #f9f9f9;
+}
+
+.cat-mgr-name {
+    font-size: 16px;
+    color: #333;
+    font-weight: 500;
+}
+
+/* 红色删除图标容器 */
+.cat-mgr-del {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: background 0.2s;
+    cursor: pointer;
+}
+
+.cat-mgr-del:active {
+    background: rgba(255, 59, 48, 0.1);
+    /* 点击时的淡红背景 */
+}
+
+.wb-mount-group {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #eee;
+    margin-bottom: 12px;
+    overflow: hidden;
+}
+
+/* 分组头部 (分类名 + 全选) */
+.wb-mount-group-header {
+    background: #F9F9FC;
+    padding: 10px 12px;
+    border-bottom: 1px solid #f0f0f0;
+    font-size: 14px;
+}
+
+/* 分组内容区 */
+.wb-mount-group-body {
+    padding: 0;
+}
+
+/* 子项 (单本书) */
+.wb-mount-subitem {
+    display: flex;
+    align-items: center;
+    padding: 10px 12px 10px 16px;
+    /* 左侧缩进多一点 */
+    border-bottom: 1px solid #f9f9f9;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.wb-mount-subitem:last-child {
+    border-bottom: none;
+}
+
+.wb-mount-subitem:active {
+    background: #fafafa;
+}
+
+/* 复选框样式微调 */
+.wb-mount-subitem input[type="checkbox"] {
+    margin-right: 12px;
+    width: 18px;
+    height: 18px;
+    accent-color: var(--theme-purple);
+}
+
+.wb-mount-info {
+    flex-grow: 1;
+}
+
+.wb-mount-info .name {
+    font-size: 14px;
+    color: #333;
+    font-weight: 500;
+}
+
+.wb-mount-info .preview {
+    font-size: 11px;
+    color: #aaa;
+    margin-top: 2px;
+}
+
+#worldbook-list-container {
+    height: calc(100vh - 180px);
+    /* 减去头部、Tab栏和底部的高度 */
+    overflow-y: auto;
+    position: relative;
+    /* 增加平滑滚动 */
+    -webkit-overflow-scrolling: touch;
+}
+
+/* 微调 wb-card 适配固定高度的虚拟列表 */
+.wb-card {
+    /* 这里的 margin-bottom 不再生效，因为是绝对定位 */
+    /* 高度由 JS 控制，这里只需要确保内部布局正常 */
+    overflow: hidden;
+    /* 确保选中时复选框层级正确 */
+    z-index: 1;
+}
+
+.msg-menu-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 999;
+    /* 既然是长按气泡，不需要全屏变黑，透明即可，或者极淡的模糊 */
+    background: rgba(0, 0, 0, 0);
+}
+
+/* 2. 菜单本体 (莫兰迪白紫风) */
+.msg-menu-box {
+    position: absolute;
+    /* 位置由 JS 动态计算 */
+    background: rgba(255, 255, 255, 0.9);
+    backdrop-filter: blur(12px);
+    /* 核心：高级毛玻璃 */
+    -webkit-backdrop-filter: blur(12px);
+    border-radius: 16px;
+    box-shadow: 0 8px 32px rgba(155, 158, 206, 0.25);
+    /* 紫色系柔光阴影 */
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    padding: 6px;
+    display: flex;
+    flex-direction: column;
+    min-width: 120px;
+    transform-origin: center center;
+    animation: menuPop 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+/* 弹出动画 */
+@keyframes menuPop {
+    0% {
+        transform: scale(0.8);
+        opacity: 0;
+    }
+
+    100% {
+        transform: scale(1);
+        opacity: 1;
+    }
+}
+
+/* 菜单项 */
+.msg-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 12px 16px;
+    border-radius: 10px;
+    cursor: pointer;
+    transition: background 0.2s;
+}
+
+.msg-menu-item:active {
+    background: rgba(155, 158, 206, 0.15);
+    /* 点击时的淡紫反馈 */
+}
+
+.msg-menu-item span {
+    font-size: 14px;
+    font-weight: 500;
+    color: #444;
+}
+
+/* 红色删除项 */
+.msg-menu-item.danger span {
+    color: #FF3B30;
+    /* iOS 警告红 */
+}
+
+.msg-menu-line {
+    height: 1px;
+    background: rgba(0, 0, 0, 0.05);
+    margin: 2px 10px;
+}
+
+/* [可选] 长按时气泡的高亮效果 (类似小红书压暗背景高亮主体) */
+.msg-bubble.long-pressed {
+    transform: scale(0.98);
+    filter: brightness(0.95);
+    transition: all 0.2s;
 }
