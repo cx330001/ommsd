@@ -7,7 +7,7 @@ const db = new Dexie('sisi_db');
 // 1. 定义表结构
 // chars: 统一存储所有角色。type=0为AI/好友，type=1为当前用户(我)
 // chats: members 是一个包含 charId 的数组，例如 [1, 5]
-db.version(6).stores({
+db.version(8).stores({
     chars: '++id, type, name',
     chats: '++id, name, *members, updated',
     settings: 'key',
@@ -15,7 +15,10 @@ db.version(6).stores({
     relations: '++id, fromId, toId',
     // [新增] wb_categories 表，以及在 worldbooks 里增加 categoryId 索引
     wb_categories: '++id, name, type', // type='global' or 'local'
-    worldbooks: '++id, name, type, categoryId'
+    worldbooks: '++id, name, type, categoryId',
+    // --- 新增下面两行 ---
+    sticker_packs: '++id, name',     // 表情包分类 (例如: "猫猫头", "常用")
+    stickers: '++id, packId, src, name'
 });
 
 const dbSystem = {
@@ -25,6 +28,8 @@ const dbSystem = {
     messages: db.messages,
     relations: db.relations, // [新增] 暴露表对象
     worldbooks: db.worldbooks,
+    sticker_packs: db.sticker_packs,
+    stickers: db.stickers,
     getMessagesPaged: async function (chatId, limit = 20, offset = 0) {
         // 1. reverse(): 倒序，从最新的时间往前找
         // 2. offset(offset): 跳过已经加载的
@@ -99,7 +104,23 @@ const dbSystem = {
     deleteWorldBooks: function (ids) {
         return db.worldbooks.bulkDelete(ids);
     },
-
+    deleteStickerPack: async function (id) {
+        return db.transaction('rw', db.sticker_packs, db.stickers, async () => {
+            // 1. 先删里面的表情
+            await db.stickers.where('packId').equals(id).delete();
+            // 2. 再删分类本身
+            await db.sticker_packs.delete(id);
+        });
+    },
+    getStickersPaged: async function (packId, limit = 20, offset = 0) {
+        // 倒序 (新加的在前面) -> 跳过 offset -> 取 limit
+        return await db.stickers
+            .where('packId').equals(packId)
+            .reverse()
+            .offset(offset)
+            .limit(limit)
+            .toArray();
+    },
     // [修改] initDefault 初始化默认分类
     initDefault: async function () {
         const count = await db.chars.count();
@@ -120,6 +141,10 @@ const dbSystem = {
         const catsLocal = await db.wb_categories.where('type').equals('local').toArray();
         if (!catsLocal.find(c => c.name === '未分类')) {
             await this.addCategory("未分类", "local");
+        }
+        const packs = await db.sticker_packs.toArray();
+        if (packs.length === 0) {
+            await db.sticker_packs.add({ name: "默认收藏" });
         }
     },
 

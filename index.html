@@ -7,8 +7,7 @@
         content="width=device-width, initial-scale=1.0, viewport-fit=cover, maximum-scale=5.0, user-scalable=yes" />
     <title>sisi</title>
     <link rel="stylesheet" href="style.css">
-    <link rel="apple-touch-icon"
-        href="https://s3plus.meituan.net/opapisdk/op_ticket_885190757_1758510900942_qdqqd_djw0z2.jpeg">
+    <link rel="apple-touch-icon" href="https://img3.autoimg.cn/g33/M04/BB/6C/ChxpVWlVaV6AdegHAALyV1UsDVk85.jpeg">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
     <meta name="theme-color" content="#f0f2f5">
@@ -275,7 +274,7 @@
 
                 <input type="text" class="chat-input" placeholder="输入消息..." />
 
-                <div class="icon-btn">
+                <div class="icon-btn" onclick="toggleChatStickerPanel()">
                     <svg viewBox="0 0 24 24" width="28" height="28" fill="#9B9ECE">
                         <path
                             d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" />
@@ -289,8 +288,38 @@
                     </svg>
                 </div>
             </div>
-        </div>
 
+            <div id="chat-sticker-panel" style="display:none;">
+                <div class="sticker-panel-header-bar"
+                    style="display:flex; align-items:center; border-bottom:1px solid #eee; background:#fff; padding-right:10px;">
+                    <div id="chat-sticker-tabs" class="category-scroll-container"
+                        style="flex-grow:1; padding: 8px 10px; border-bottom:none; margin-bottom:0;"></div>
+
+                    <div onclick="openStickerMountModal()"
+                        style="padding: 6px; cursor:pointer; color:#999; display:flex;">
+                        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+                            <path
+                                d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58a.49.49 0 0 0 .12-.61l-1.92-3.32a.488.488 0 0 0-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54a.484.484 0 0 0-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58a.49.49 0 0 0-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z">
+                            </path>
+                        </svg>
+                    </div>
+                </div>
+
+                <div id="chat-sticker-body" style="flex:1; overflow-y:auto; padding:10px; position:relative;"></div>
+            </div>
+        </div>
+        <div id="modal-sticker-mount" class="modal-overlay" style="z-index: 650;">
+            <div class="modal-card">
+                <div class="close-modal" onclick="document.getElementById('modal-sticker-mount').style.display='none'">×
+                </div>
+                <h3 style="margin-top:0;">表情包管理</h3>
+                <p style="font-size:12px;color:#999;margin-bottom:15px;">勾选要在这个聊天中显示的表情包</p>
+
+                <div id="st-mount-list" style="max-height:300px; overflow-y:auto;"></div>
+
+                <button class="btn-main" onclick="saveStickerMount()">保存设置</button>
+            </div>
+        </div>
         <div id="modal-select-me" class="modal-overlay">
             <div class="modal-card">
                 <div class="close-modal" onclick="document.getElementById('modal-select-me').style.display='none'">×
@@ -1001,6 +1030,224 @@
 
                 <div class="msg-menu-item" onclick="handleDeleteMsg()" style="justify-content: center;">
                     <span>删除</span>
+                </div>
+            </div>
+        </div>
+        <div id="app-sticker-mgr" class="app-window" style="background: #F9F9FC;">
+            <div class="app-header">
+                <div style="height:calc(10px + env(safe-area-inset-top));"></div>
+                <div class="header-content">
+                    <div class="header-left" onclick="closeApp('sticker-mgr')">
+                        <svg viewBox="0 0 24 24" width="28" height="28">
+                            <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" />
+                        </svg>
+                    </div>
+                    <div class="header-title"><span style="font-size:17px;font-weight:600;">表情库</span></div>
+
+                    <div class="header-right" style="gap:15px; padding-right:10px;">
+                        <div id="st-btn-select" onclick="toggleStickerSelectMode()"
+                            style="cursor:pointer; display:flex; color:var(--theme-purple);">
+                            <svg class="icon-default" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
+                                <path
+                                    d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z" />
+                            </svg>
+                        </div>
+                        <div id="st-btn-add" onclick="showAddStickerModal()" style="cursor:pointer; display:flex;">
+                            <svg viewBox="0 0 24 24" width="26" height="26" fill="#9B9ECE">
+                                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+                            </svg>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="flex-shrink: 0; padding: 10px 16px 0 16px; background: #F9F9FC; z-index: 10;">
+                <div id="sticker-pack-bar" class="category-scroll-container"></div>
+            </div>
+
+            <div class="app-body" style="padding: 10px 16px;">
+                <div id="sticker-grid-container" class="sticker-grid"></div>
+            </div>
+
+            <div id="st-bottom-bar" class="wb-bottom-bar">
+                <div class="wb-bar-btn" onclick="openStickerMoveModal()">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="#666">
+                        <path
+                            d="M10 9h4V6h3l-5-5-5 5h3v3zm-1 1H6V7l-5 5 5 5v-3h3v-4zm14 2l-5-5v3h-3v4h3v3l5-5zm-9 3h-4v3H7l5 5 5-5h-3v-3z" />
+                    </svg>
+                    <span>移动到...</span>
+                </div>
+                <div class="wb-bar-btn" onclick="selectAllStickers()">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="#666">
+                        <path
+                            d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-9 14l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z" />
+                    </svg>
+                    <span>全选</span>
+                </div>
+                <div class="wb-bar-btn danger" onclick="batchDeleteStickers()">
+                    <svg viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="#FF3B30" stroke-width="2">
+                        <path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+                    </svg>
+                    <span>删除</span>
+                </div>
+            </div>
+
+            <div id="modal-sticker-add" class="modal-overlay" style="z-index: 500;">
+                <div class="modal-card"
+                    style="display: flex; flex-direction: column; padding: 0; max-height: 85vh; overflow: hidden;">
+
+                    <div style="padding: 20px 20px 0 20px; flex-shrink: 0; position: relative;">
+                        <div class="close-modal"
+                            onclick="document.getElementById('modal-sticker-add').style.display='none'"
+                            style="top: 15px; right: 20px;">×</div>
+
+                        <h3 style="margin-top:0;">管理表情</h3>
+
+                        <div class="wb-edit-type-segment" style="margin-bottom:10px;">
+                            <div id="st-tab-item" class="wb-edit-segment-item active"
+                                onclick="switchStickerAddTab('item')">单张</div>
+                            <div id="st-tab-batch" class="wb-edit-segment-item" onclick="switchStickerAddTab('batch')">
+                                批量</div>
+                            <div id="st-tab-backup" class="wb-edit-segment-item"
+                                onclick="switchStickerAddTab('backup')">备份</div>
+                        </div>
+                    </div>
+
+                    <div
+                        style="flex: 1; overflow-y: auto; padding: 10px 20px 20px 20px; -webkit-overflow-scrolling: touch;">
+
+                        <div id="form-sticker-item">
+                            <div style="display:flex; gap:15px; margin-bottom:15px; align-items:flex-start;">
+                                <div style="flex-shrink:0; text-align:center;">
+                                    <div id="st-upload-box" onclick="document.getElementById('st-file-input').click()"
+                                        style="width:80px; height:80px; background:#f9f9f9; border:1px dashed #ccc; border-radius:12px; display:flex; align-items:center; justify-content:center; overflow:hidden; position:relative;">
+                                        <img id="st-preview" src=""
+                                            style="width:100%; height:100%; object-fit:contain; display:none;">
+                                        <div id="st-ph"
+                                            style="color:#999; font-size:10px; display:flex; flex-direction:column; align-items:center;">
+                                            <svg viewBox="0 0 24 24" width="20" height="20" fill="#ccc"
+                                                style="margin-bottom:2px;">
+                                                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+                                            </svg>
+                                            <span>上传</span>
+                                        </div>
+                                    </div>
+                                    <input type="file" id="st-file-input" hidden accept="image/*"
+                                        onchange="handleStickerFile(this)">
+                                </div>
+                                <div style="flex-grow:1;">
+                                    <label class="setting-label" style="margin-bottom:6px; display:block;">表情名称</label>
+                                    <input type="text" id="st-item-name" class="setting-input" placeholder="未命名"
+                                        style="height:40px; font-size:14px; margin-bottom:8px;">
+                                    <div style="font-size:11px; color:#aaa; line-height:1.4;">支持 JPG, PNG, GIF<br>建议尺寸
+                                        240x240</div>
+                                </div>
+                            </div>
+                            <div style="background:#F9F9FC; border-radius:10px; padding:10px 12px; margin-bottom:15px;">
+                                <div style="display:flex; align-items:center; margin-bottom:4px;">
+                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="#999"
+                                        style="margin-right:4px;">
+                                        <path
+                                            d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" />
+                                    </svg>
+                                    <span style="font-size:12px; color:#888; font-weight:500;">网络图片链接 (可选)</span>
+                                </div>
+                                <input type="text" id="st-url-input" class="setting-input"
+                                    placeholder="粘贴以 http 开头的图片链接" oninput="handleStickerUrl(this)"
+                                    style="height:36px; font-size:13px; border:1px solid #eee; background:#fff; margin-bottom:0;">
+                            </div>
+                            <button class="btn-main" onclick="saveStickerItem()">保存到当前库</button>
+                        </div>
+
+                        <div id="form-sticker-batch" style="display:none;">
+                            <label class="setting-label">批量文本 (格式：名称: 链接)</label>
+                            <div class="input-wrapper">
+                                <textarea id="st-batch-input" class="setting-input"
+                                    style="height:150px; line-height:1.4; font-size:13px; white-space:pre-wrap; word-break:break-all; overflow-y:auto;"
+                                    placeholder="例如：&#10;开心: http://example.com/1.jpg&#10;难过: http://example.com/2.jpg"></textarea>
+                            </div>
+                            <button class="btn-main" onclick="saveStickerBatch()">开始批量导入</button>
+                        </div>
+
+                        <div id="form-sticker-backup" style="display:none; padding-top:10px;">
+                            <div onclick="exportCurrentPack()"
+                                style="display:flex; align-items:center; background:#F9F9FC; padding:12px 16px; border-radius:12px; margin-bottom:10px; cursor:pointer; border:1px solid #f0f0f0;">
+                                <div
+                                    style="width:36px; height:36px; background:#fff; border-radius:10px; display:flex; align-items:center; justify-content:center; margin-right:12px; flex-shrink:0; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
+                                    <svg viewBox="0 0 24 24" width="20" height="20" fill="#9B9ECE">
+                                        <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z" />
+                                    </svg>
+                                </div>
+                                <div style="flex-grow:1;">
+                                    <div style="font-size:15px; font-weight:600; color:#333;">导出当前表情库</div>
+                                    <div style="font-size:12px; color:#999;">生成 .json 备份文件</div>
+                                </div>
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="#ccc">
+                                    <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
+                                </svg>
+                            </div>
+
+                            <div
+                                style="position:relative; display:flex; align-items:center; background:#F9F9FC; padding:12px 16px; border-radius:12px; margin-bottom:10px; cursor:pointer; border:1px solid #f0f0f0;">
+                                <input type="file" id="json-import-input" accept=".json"
+                                    onchange="importStickerPack(this)"
+                                    style="position:absolute; top:0; left:0; width:100%; height:100%; opacity:0; cursor:pointer;">
+                                <div
+                                    style="width:36px; height:36px; background:#fff; border-radius:10px; display:flex; align-items:center; justify-content:center; margin-right:12px; flex-shrink:0; box-shadow:0 2px 5px rgba(0,0,0,0.05);">
+                                    <svg viewBox="0 0 24 24" width="20" height="20" fill="#9B9ECE">
+                                        <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z" />
+                                    </svg>
+                                </div>
+                                <div style="flex-grow:1;">
+                                    <div style="font-size:15px; font-weight:600; color:#333;">导入表情库</div>
+                                    <div style="font-size:12px; color:#999;">读取 .json 还原数据</div>
+                                </div>
+                                <svg viewBox="0 0 24 24" width="18" height="18" fill="#ccc">
+                                    <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
+                                </svg>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            </div>
+
+            <div id="modal-sticker-move" class="modal-overlay" style="z-index: 510;">
+                <div class="modal-card">
+                    <div class="close-modal"
+                        onclick="document.getElementById('modal-sticker-move').style.display='none'">×</div>
+                    <h3>移动到...</h3>
+                    <div id="st-move-list" style="max-height:300px; overflow-y:auto;"></div>
+                </div>
+            </div>
+
+            <div id="sticker-preview-overlay" class="preview-overlay" onclick="this.style.display='none'">
+                <img id="sticker-preview-img" src="">
+                <div style="color:white; margin-top:20px; font-size:14px; opacity:0.8;">点击任意处关闭</div>
+            </div>
+        </div>
+        <div id="modal-st-pack-mgr" class="modal-overlay" style="z-index: 600;">
+            <div class="modal-card">
+                <div class="close-modal" onclick="document.getElementById('modal-st-pack-mgr').style.display='none'">×
+                </div>
+                <h3 style="margin-top:0;">管理表情库</h3>
+
+                <div style="display:flex; gap:10px; margin-bottom:15px;">
+                    <input type="text" id="quick-pack-name" class="setting-input" placeholder="新分类名称"
+                        style="height:40px; margin:0;">
+                    <button class="btn-main" onclick="quickAddStickerPack()"
+                        style="width:80px; margin:0; padding:0;">添加</button>
+                </div>
+
+                <div style="font-size:12px;color:#999;margin-bottom:8px;">点击右侧图标删除分类 (不可恢复)</div>
+
+                <div id="st-pack-mgr-list" style="
+    max-height: 50vh; 
+    overflow-y: auto; 
+    border: 1px solid #f0f0f0; 
+    border-radius: 12px;
+    margin-top: 10px;
+">
                 </div>
             </div>
         </div>

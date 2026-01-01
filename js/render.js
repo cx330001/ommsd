@@ -328,7 +328,7 @@ window.confirmChat = async function (myPersonaId) {
 /* --- js/render.js 的末尾部分 --- */
 
 // 全局变量，用于管理当前的滚动实例
-let chatScroller = null;
+window.chatScroller = null;
 let currentActiveChatId = null;
 
 // ==========================================
@@ -393,41 +393,46 @@ class ChatVirtualScroller {
         if (this.isLoading) return;
         this.isLoading = true;
 
-        // 1. 记住当前的高度 (为了防止画面乱跳)
+        // 1. 记录当前状态
+        // scrollHeight 是在这个时刻，内容的总高度
         const oldScrollHeight = this.container.scrollHeight;
         const oldScrollTop = this.container.scrollTop;
 
-        // 2. 去数据库取更早的 20 条
-        // offset 传当前已经有的消息数量
+        // 2. 去数据库取更早的消息
         const moreMsgs = await window.dbSystem.getMessagesPaged(this.chatId, 20, this.messages.length);
 
         if (moreMsgs.length === 0) {
-            this.isFinished = true; // 没数据了，以后别加载了
+            this.isFinished = true;
             this.isLoading = false;
             console.log("历史记录已全部加载完毕");
             return;
         }
 
-        // 3. 把旧消息拼接到数组头部
+        // 3. 拼接数据
         this.messages = [...moreMsgs, ...this.messages];
 
-        // 4. 强制清空高度缓存 (因为索引变了)，否则计算会错
+        // 4. 清空高度缓存 (因为索引全变了)
         this.heightCache.clear();
 
-        // 5. 重新渲染
+        // 5. 重新渲染 (注意：这里必须是同步渲染，如果 render 里面有 await 要小心)
         this.render();
 
-        // 6. [无感魔法] 瞬间修正滚动条位置
-        requestAnimationFrame(() => {
-            const newScrollHeight = this.container.scrollHeight;
-            // 算出多了多少高度
-            const addedHeight = newScrollHeight - oldScrollHeight;
+        // ============================================
+        // 🔴 核心修复：不要用 requestAnimationFrame
+        // 必须在 render 后立即计算，否则浏览器会先画一帧错误的
+        // ============================================
 
-            // 把滚动条往下拽，抵消新增的高度
-            this.container.scrollTop = oldScrollTop + addedHeight;
+        // 强制浏览器重排，获取新的总高度
+        const newScrollHeight = this.container.scrollHeight;
 
-            this.isLoading = false;
-        });
+        // 算出新增了多少高度
+        const addedHeight = newScrollHeight - oldScrollHeight;
+
+        // 立即修正滚动条，抵消新增的高度
+        // 这样用户视觉上就会停留在原地不动
+        this.container.scrollTop = oldScrollTop + addedHeight;
+
+        this.isLoading = false;
     }
     /* js/render.js */
 
@@ -488,18 +493,16 @@ class ChatVirtualScroller {
 
         visibleData.forEach((msg, i) => {
             const realIndex = start + i;
+            // 判断是否是“我”发的
             const isRight = (this.currentUserId && msg.senderId === this.currentUserId);
 
-            // 读取配置
+            // 读取配置 (头像等)
             const config = this.configMap[msg.senderId] || { size: 40, shape: 'circle', hidden: false };
-
-            // 【关键】如果隐藏头像，添加 'no-avatar' 类，配合CSS彻底移除占位
             const rowClass = `${isRight ? 'msg-row me' : 'msg-row'} ${config.hidden ? 'no-avatar' : ''}`;
 
-            // 样式计算
+            // 头像样式
             const sizePx = config.size + 'px';
             const radius = config.shape === 'square' ? '6px' : '50%';
-
             let avatarStyle = this.avatarMap[msg.senderId] || 'background:#ccc';
             if (msg.senderId === -1) avatarStyle = "background: transparent; box-shadow: none;";
 
@@ -508,22 +511,60 @@ class ChatVirtualScroller {
                 width: ${sizePx}; 
                 height: ${sizePx}; 
                 border-radius: ${radius};
-                /* 注意：这里不需要 visibility:hidden，因为父级加了 no-avatar 会直接 display:none */
                 margin-right: ${isRight ? 0 : 10}px;
                 margin-left: ${isRight ? 10 : 0}px;
             `;
 
-            let contentHtml = this.escapeHtml(msg.text);
-            if (msg.text && (msg.text.includes('typing-dots') || msg.text.includes('typing-bubble'))) {
-                contentHtml = msg.text;
+            let contentHtml = "";
+
+            // 🌟🌟🌟 重点修改：样式变量 🌟🌟🌟
+            // 默认清空，后面针对图片做特殊覆盖
+            let bubbleStyleOverride = "";
+
+            if (msg.type === 'image') {
+                // === 图片消息处理 (修复版) ===
+
+                // 1. 样式覆盖：
+                // line-height: 0 -> 消除图片底部的文字基线空隙
+                // width/height: auto -> 让气泡紧贴图片，不要有多余空白
+                bubbleStyleOverride = "background: transparent; box-shadow: none; padding: 0; width: auto; height: auto; line-height: 0;";
+
+                let imgSrc = msg.text;
+                if (msg.text instanceof Blob) {
+                    imgSrc = URL.createObjectURL(msg.text);
+                    if (window.activeUrls) window.activeUrls.push(imgSrc);
+                }
+
+                // 2. 内容 HTML：
+                // 🔴 核心修复：去掉了外层的 120px 固定宽高 div，也不需要 flex 布局了
+                // 直接放 img，让外层的 .msg-row (flex-direction) 自动处理左右位置
+                contentHtml = `
+        <img src="${imgSrc}" 
+             onclick="window.previewImage && window.previewImage(this.src)" 
+             style="
+                width: 100px;        /* 🔴 强制宽度 */
+                height: 100px;       /* 🔴 强制高度，解决高度塌陷 */
+                object-fit: contain; /* 保持图片比例，不会被拉伸变形 */
+                border-radius: 6px;
+                cursor: pointer;
+                display: block;
+                background: rgba(0,0,0,0.03); /* 加个淡底色，加载慢时也有个框 */
+             " 
+             loading="lazy">`;
+            } else {
+                // === 文本消息处理 (保持原样) ===
+                contentHtml = this.escapeHtml(msg.text);
+                if (msg.text && (msg.text.includes('typing-dots') || msg.text.includes('typing-bubble'))) {
+                    contentHtml = msg.text;
+                }
             }
 
             html += `
 <div class="virtual-item" data-index="${realIndex}">
-    <div class="${rowClass}">
-        <div class="avatar" style="${finalAvatarStyle}"></div>
+    <div class="${rowClass}" style="align-items: flex-start;"> <div class="avatar" style="${finalAvatarStyle}"></div>
         
         <div class="msg-bubble" 
+             style="${bubbleStyleOverride}"
              data-msg-id="${msg.id}" 
              data-msg-text="${this.escapeHtml(msg.text)}"
              oncontextmenu="return false;">${contentHtml}</div>
@@ -726,7 +767,7 @@ window.openChatDetail = async function (chatId) {
     }
 
     // 传入 myIdentityIdInChat 而不是 currentUser.id
-    chatScroller = new ChatVirtualScroller(
+    window.chatScroller = new ChatVirtualScroller(
         'chat-body',
         messages,
         avatarMap,
@@ -804,7 +845,21 @@ window.renderChatUI = async function () {
                         <svg viewBox="0 0 24 24" width="20" height="20" fill="#9B9ECE"><path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04c.39-.39.39-1.02 0-1.41l-2.34-2.34c-.39-.39-1.02-.39-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/></svg>
                     </div>
                 </div>
-                <div class="menu-item"><div class="chat-info"><h4>通用设置</h4></div></div>
+
+                <div class="menu-item" onclick="openStickerManager()">
+                    <div class="avatar" style="width:40px;height:40px;background:#EAEBF9; margin-right:12px;">
+                        <svg viewBox="0 0 24 24" width="24" height="24" fill="#9B9ECE">
+                            <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+                        </svg>
+                    </div>
+                    <div class="chat-info" style="flex-grow:1;">
+                        <h4 style="margin:0;">我的表情</h4>
+                        <p style="margin:0;font-size:12px;color:#999;">管理自定义表情包</p>
+                    </div>
+                    <svg viewBox="0 0 24 24" width="20" height="20" fill="#ccc">
+                        <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z" />
+                    </svg>
+                </div>
             `;
         } else {
             meContainer.innerHTML = `
@@ -971,26 +1026,44 @@ class WbVirtualScroller {
         if (this.isLoading || this.isFinished) return;
         this.isLoading = true;
 
-        // 从 DB 分页获取
-        const newItems = await window.dbSystem.getWorldBooksPaged(
-            this.type,
-            this.categoryId,
-            this.pageSize,
-            this.offset
-        );
+        // 1. 【修正】调用世界书的查询接口，而不是表情包的
+        // 使用 this.type (global/local) 和 this.categoryId
+        const newItems = await window.dbSystem.getWorldBooksPaged(this.type, this.categoryId, this.pageSize, this.offset);
 
         if (newItems.length < this.pageSize) {
-            this.isFinished = true; // 数据取完了
+            this.isFinished = true;
         }
 
         if (newItems.length > 0) {
             this.listData = [...this.listData, ...newItems];
             this.offset += newItems.length;
 
-            // 更新容器总高度估算 (为了撑开滚动条)
-            this.content.style.height = (this.listData.length * this.itemHeight) + 'px';
+            // 2. 【修正】高度计算逻辑
+            // 世界书是单列列表，高度 = 数量 * 单项高度
+            // 之前的 this.colCount 和 this.gap 是表情包网格用的，这里要删掉
+            const totalHeight = this.listData.length * this.itemHeight;
+            this.content.style.height = totalHeight + 'px';
 
-            this.render(); // 渲染新数据
+            this.render();
+        }
+        // 3. 【修正】空状态文案
+        else if (this.listData.length === 0) {
+            this.container.innerHTML = `
+            <div style="
+                width: 100%;
+                height: 300px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                color: #ccc;
+            ">
+                <svg viewBox="0 0 24 24" width="60" height="60" fill="#eee" style="margin-bottom:15px;">
+                    <path d="M18 2H6c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h12c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zM6 4h5v8l-2.5-1.5L6 12V4z"/>
+                </svg>
+                <div style="font-size:15px; color:#999; font-weight:500;">还没有相关设定</div>
+                <div style="font-size:13px; color:#ccc; margin-top:6px;">点击右上角 + 号添加</div>
+            </div>`;
         }
 
         this.isLoading = false;
@@ -1162,4 +1235,397 @@ document.addEventListener('touchend', function (e) {
     }
 }, { passive: true });
 
-// 为了兼容 PC 端调试，可以加上 mousedown/mouseup 的类似逻辑 (可选)
+/* =========================================
+   [新增] 表情包网格虚拟列表 (Grid Virtual Scroller)
+   ========================================= */
+
+let stickerScroller = null; // 全局实例
+
+// 1. 清理内存 (在关闭APP时调用)
+window.cleanStickerMemory = function () {
+    if (stickerScroller) {
+        stickerScroller.destroy();
+        stickerScroller = null;
+    }
+    const container = document.getElementById('sticker-grid-container');
+    if (container) container.innerHTML = '';
+    console.log("表情包内存已释放 (Sticker Cleaned)");
+};
+
+// 2. 网格虚拟列表类
+class StickerVirtualScroller {
+    constructor(containerId, packId) {
+        this.container = document.getElementById(containerId); // 外部容器 app-body
+        // 注意：表情页的滚动容器其实是 app-body，而不是 grid-container
+        // 我们需要找到最近的 scroll 父级
+        this.scrollParent = this.container.closest('.app-body') || this.container;
+
+        this.packId = packId;
+        this.listData = [];
+        this.isLoading = false;
+        this.isFinished = false;
+
+        this.offset = 0;
+        this.pageSize = 30; // 每次加载30张
+
+        // 网格配置
+        this.colCount = 3; // 3列
+        this.gap = 12;     // 间距 12px
+        this.paddingX = 0; // 容器内边距(如果CSS设了padding这里要扣掉)
+
+        // 动态计算单项宽高
+        // 容器宽 - (列数-1)*间距 / 列数
+        const clientW = this.container.clientWidth || window.innerWidth;
+        // 假设 app-body 有 16px padding * 2 = 32px
+        // 我们取 container 的实际宽度
+        this.itemWidth = (clientW - (this.gap * (this.colCount - 1))) / this.colCount;
+
+        // 高度 = 宽度 (正方形图) + 名字高度 (约26px)
+        this.itemHeight = this.itemWidth + 26;
+
+        this.buffer = 4; // 多渲染几行
+        this.activeUrls = []; // Blob管理
+
+        // 内部容器 (用于撑开高度)
+        this.content = document.createElement('div');
+        this.container.innerHTML = '';
+        this.container.appendChild(this.content);
+
+        this.bindScroll();
+        this.loadMore();
+    }
+
+    bindScroll() {
+        this.onScroll = () => {
+            requestAnimationFrame(() => {
+                this.render();
+                // 触底加载
+                const { scrollTop, scrollHeight, clientHeight } = this.scrollParent;
+                if (scrollHeight - scrollTop - clientHeight < 300) {
+                    this.loadMore();
+                }
+            });
+        };
+        this.scrollParent.addEventListener('scroll', this.onScroll, { passive: true });
+    }
+
+    async loadMore() {
+        if (this.isLoading || this.isFinished) return;
+        this.isLoading = true;
+
+        const newItems = await window.dbSystem.getStickersPaged(this.packId, this.pageSize, this.offset);
+
+        if (newItems.length < this.pageSize) {
+            this.isFinished = true;
+        }
+
+        if (newItems.length > 0) {
+            // ... (这部分保持不变) ...
+            this.listData = [...this.listData, ...newItems];
+            this.offset += newItems.length;
+
+            const rowCount = Math.ceil(this.listData.length / this.colCount);
+            const totalHeight = rowCount * (this.itemHeight + this.gap);
+            this.content.style.height = totalHeight + 'px';
+
+            this.render();
+        }
+        // 👇👇👇 重点修改这里 👇👇👇
+        else if (this.listData.length === 0) {
+            this.container.innerHTML = `
+            <div style="
+                width: 100%;
+                height: 300px;
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                color: #ccc;
+            ">
+                <svg viewBox="0 0 24 24" width="60" height="60" fill="#eee" style="margin-bottom:15px;">
+                    <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z"/>
+                </svg>
+                <div style="font-size:15px; color:#999; font-weight:500;">这里还是空的</div>
+                <div style="font-size:13px; color:#ccc; margin-top:6px;">点击右上角 <span style="font-weight:bold; color:#9B9ECE;">+</span> 号添加表情</div>
+            </div>`;
+        }
+        // 👆👆👆 修改结束 👆👆👆
+
+        this.isLoading = false;
+    }
+
+    refresh() {
+        this.render(true); // 强制重绘
+    }
+
+    render(force = false) {
+        if (!this.scrollParent) return;
+
+        const scrollTop = this.scrollParent.scrollTop;
+        const visibleHeight = this.scrollParent.clientHeight;
+
+        // 计算可视行范围
+        const startRow = Math.floor(scrollTop / (this.itemHeight + this.gap)) - this.buffer;
+        const endRow = Math.floor((scrollTop + visibleHeight) / (this.itemHeight + this.gap)) + this.buffer;
+
+        // 转换为数据索引范围
+        let startIndex = startRow * this.colCount;
+        let endIndex = (endRow + 1) * this.colCount;
+
+        if (startIndex < 0) startIndex = 0;
+        if (endIndex > this.listData.length) endIndex = this.listData.length;
+
+        // 简单的差异检测 (实际应用中这里可以优化)
+        // 为省事直接全部重绘可视区域，销毁旧Blob
+        if (this.activeUrls.length > 0) {
+            this.activeUrls.forEach(u => URL.revokeObjectURL(u));
+            this.activeUrls = [];
+        }
+
+        let html = '';
+        const visibleData = this.listData.slice(startIndex, endIndex);
+
+        visibleData.forEach((s, i) => {
+            const realIndex = startIndex + i;
+
+            // --- 核心：网格坐标计算 ---
+            const row = Math.floor(realIndex / this.colCount);
+            const col = realIndex % this.colCount;
+
+            const top = row * (this.itemHeight + this.gap);
+            const left = col * (this.itemWidth + this.gap);
+            // -----------------------
+
+            let src = s.src;
+            if (s.src instanceof Blob) {
+                src = URL.createObjectURL(s.src);
+                this.activeUrls.push(src);
+            }
+
+            const isSelectMode = window.isStickerSelectMode || false;
+            const selectedSet = window.selectedStickerIds || new Set();
+            const isSelected = selectedSet.has(s.id);
+            const cellClass = `sticker-cell ${isSelectMode ? 'selected-mode' : ''} ${isSelected ? 'selected' : ''}`;
+
+            const clickAction = isSelectMode
+                ? `toggleStickerSelection(${s.id}, this)`
+                : `openStickerPreview('${src}')`;
+
+            html += `
+            <div class="${cellClass}" onclick="${clickAction}"
+                 style="width:${this.itemWidth}px; height:${this.itemHeight}px; transform:translate3d(${left}px, ${top}px, 0);">
+                <div class="sticker-check-overlay"></div>
+                <div class="sticker-img-box" style="height:${this.itemWidth}px;">
+                    <img src="${src}" loading="lazy" style="pointer-events:none;">
+                </div>
+                <div class="sticker-name">${s.name || '未命名'}</div>
+            </div>`;
+        });
+
+        this.content.innerHTML = html;
+    }
+
+    destroy() {
+        if (this.scrollParent) this.scrollParent.removeEventListener('scroll', this.onScroll);
+        if (this.activeUrls.length > 0) {
+            this.activeUrls.forEach(u => URL.revokeObjectURL(u));
+        }
+        this.container.innerHTML = '';
+        this.listData = [];
+    }
+}
+
+// 3. 初始化入口
+window.initStickerScroller = function (packId) {
+    if (stickerScroller) stickerScroller.destroy();
+    stickerScroller = new StickerVirtualScroller('sticker-grid-container', packId);
+};
+
+// 4. 刷新 (用于选择模式切换)
+window.refreshStickerScroller = function () {
+    if (stickerScroller) stickerScroller.refresh();
+};
+let chatStickerScroller = null;
+let chatPanelActiveUrls = []; // 专门管理聊天面板的临时图片
+
+// 1. 清理内存 (关闭面板时调用)
+window.cleanChatStickerMemory = function () {
+    if (chatStickerScroller) {
+        chatStickerScroller.destroy();
+        chatStickerScroller = null;
+    }
+    if (chatPanelActiveUrls.length > 0) {
+        chatPanelActiveUrls.forEach(u => URL.revokeObjectURL(u));
+        chatPanelActiveUrls = [];
+    }
+    const container = document.getElementById('chat-sticker-body');
+    if (container) container.innerHTML = '';
+
+    console.log("聊天表情面板内存已释放");
+};
+
+// 2. 简易虚拟列表类 (针对聊天面板优化)
+class ChatStickerVirtualScroller {
+    constructor(containerId, packId) {
+        this.container = document.getElementById(containerId);
+        this.packId = packId;
+        this.listData = [];
+        this.isLoading = false;
+
+        this.colCount = 4; // 聊天面板窄，放4列
+        this.gap = 10;
+
+        // 动态计算宽高
+        const clientW = this.container.clientWidth;
+        // 减去 padding (假设10px * 2)
+        const usableW = clientW;
+        this.itemSize = (usableW - (this.gap * (this.colCount - 1))) / this.colCount;
+
+        // 撑开高度的内容层
+        this.content = document.createElement('div');
+        this.content.style.position = 'relative';
+        this.container.innerHTML = '';
+        this.container.appendChild(this.content);
+
+        this.bindScroll();
+        this.loadData();
+    }
+
+    bindScroll() {
+        this.onScroll = () => {
+            requestAnimationFrame(() => this.render());
+        };
+        this.container.addEventListener('scroll', this.onScroll, { passive: true });
+    }
+
+    async loadData() {
+        // 一次性拿该分类下的所有表情 (一般表情包不会有几千张，几百张一次性拿没问题)
+        this.listData = await window.dbSystem.stickers.where('packId').equals(this.packId).reverse().toArray();
+
+        const rowCount = Math.ceil(this.listData.length / this.colCount);
+        this.content.style.height = (rowCount * (this.itemSize + this.gap)) + 'px';
+
+        this.render();
+    }
+
+    render() {
+        if (!this.container) return;
+        const scrollTop = this.container.scrollTop;
+        const visibleHeight = this.container.clientHeight;
+        const buffer = 2; // 上下缓冲行数
+
+        const rowHeight = this.itemSize + this.gap;
+
+        let startRow = Math.floor(scrollTop / rowHeight) - buffer;
+        let endRow = Math.ceil((scrollTop + visibleHeight) / rowHeight) + buffer;
+
+        if (startRow < 0) startRow = 0;
+
+        let startIndex = startRow * this.colCount;
+        let endIndex = endRow * this.colCount;
+        if (endIndex > this.listData.length) endIndex = this.listData.length;
+
+        // 清理上一帧的 URL (极致内存管理)
+        // 注意：这里可能会导致闪烁，如果闪烁严重，可以像之前一样维护一个 LRU 或只在 destroy 时清理
+        // 既然用户要求“关闭就释放”，为了流畅度，这里可以暂不每帧 revoke，而是等 closeChatStickerPanel 统一 revoke
+        // 但为了把控 Blob 生成量，我们只生成可视区域的
+
+        let html = '';
+        const visibleData = this.listData.slice(startIndex, endIndex);
+
+        visibleData.forEach((s, i) => {
+            const realIndex = startIndex + i;
+            const row = Math.floor(realIndex / this.colCount);
+            const col = realIndex % this.colCount;
+
+            const top = row * rowHeight;
+            const left = col * (this.itemSize + this.gap);
+
+            let src = s.src;
+            if (s.src instanceof Blob) {
+                src = URL.createObjectURL(s.src);
+                chatPanelActiveUrls.push(src); // 记录
+            }
+
+            // 点击直接发送
+            // 注意：如果 src 是 Blob URL，我们不能直接传 URL string，因为异步后可能失效
+            // 所以我们由于数据都在 listData 里，我们可以传 id 或者 index，然后在 send 函数里去 listData 取
+            // 这里为了方便，直接把 s.src (原始数据) 传给 sendStickerMsg 还是比较麻烦，因为 onclick 是字符串。
+            // 解决：我们将原始数据挂在 DOM 上，或者使用闭包，但虚拟列表是 innerHTML 字符串拼接。
+            // 最佳方案：onclick="prepareSendSticker(${s.id})"
+
+            html += `
+            <div class="chat-sticker-item" 
+                 onclick="handleStickerClick(${s.id})"
+                 style="width:${this.itemSize}px; height:${this.itemSize}px; top:${top}px; left:${left}px;">
+                <img src="${src}" loading="lazy">
+            </div>`;
+        });
+
+        this.content.innerHTML = html;
+    }
+
+    destroy() {
+        this.container.removeEventListener('scroll', this.onScroll);
+        this.container.innerHTML = '';
+        this.listData = [];
+    }
+}
+
+// 3. 初始化入口
+window.initChatStickerScroller = async function (packId) {
+    const container = document.getElementById('chat-sticker-body');
+    if (!container) return;
+
+    // 1. 清空容器
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:#ccc;">加载中...</div>';
+
+    // 2. 获取数据
+    const stickers = await window.dbSystem.stickers
+        .where('packId').equals(packId)
+        .reverse()
+        .toArray();
+
+    if (stickers.length === 0) {
+        container.innerHTML = '<div style="padding:40px;text-align:center;color:#ddd;font-size:12px;">这里是空的</div>';
+        return;
+    }
+
+    // 3. 生成 HTML
+    let html = `<div class="chat-sticker-grid-layout">`;
+
+    stickers.forEach(s => {
+        let src = s.src;
+        // 如果是 Blob，转 URL
+        if (s.src instanceof Blob) {
+            src = URL.createObjectURL(s.src);
+            // 这里为了简单，我们暂不追踪 activeUrls，
+            // 因为聊天面板开关频率高，浏览器自己会处理部分 GC
+        }
+
+        // 🔴🔴🔴 修改点在这里：加入了 chat-sticker-name 🔴🔴🔴
+        // 使用 || '表情' 防止名字为空时塌陷
+        html += `
+        <div class="chat-sticker-grid-item" onclick="handleStickerClick(${s.id})">
+            <img src="${src}" loading="lazy">
+            <div class="chat-sticker-name">${s.name || '表情'}</div>
+        </div>`;
+    });
+
+    html += `</div>`;
+    container.innerHTML = html;
+};
+
+// 4. 刷新 (切换 Tab 时)
+window.refreshChatStickerGrid = function () {
+    if (chatStickerScroller) chatStickerScroller.render();
+};
+
+// 5. 点击处理 (中转函数)
+window.handleStickerClick = async function (id) {
+    // 从 DB 取最新数据发送，最稳妥
+    const sticker = await window.dbSystem.stickers.get(id);
+    if (sticker) {
+        window.sendStickerMsg(sticker.src);
+    }
+};

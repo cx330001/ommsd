@@ -358,13 +358,19 @@ body {
 .modal-card {
     background: #fff;
     width: 85%;
-    max-width: 340px;
+    max-width: 320px;
+    /* 稍微改窄一点，更精致 */
     border-radius: 24px;
-    padding: 20px;
-    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.15);
+    /* 大圆角 */
+    padding: 24px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
     position: relative;
-    max-height: 85vh;
-    overflow-y: auto;
+
+    /* 核心：防止被内容撑爆 */
+    display: flex;
+    flex-direction: column;
+    max-height: 80vh;
+    /* 限制最大高度不超过屏幕的 80% */
 }
 
 .close-modal {
@@ -482,6 +488,7 @@ textarea.input-style {
     font-size: 16px;
     outline: none;
     color: #333;
+    min-width: 0;
 }
 
 .icon-btn {
@@ -493,6 +500,7 @@ textarea.input-style {
     border-radius: 50%;
     cursor: pointer;
     transition: background 0.2s;
+    flex-shrink: 0;
 }
 
 .icon-btn:active {
@@ -610,6 +618,7 @@ textarea.input-style {
     /* 之前是 padding-bottom: 70px; 现在改大一点，
        因为 footer 高度约 60px + 安全区，留 100px 比较稳妥 */
     padding-bottom: calc(60px + env(safe-area-inset-bottom)) !important;
+    overflow-anchor: none;
 }
 
 ::-webkit-scrollbar {
@@ -2382,4 +2391,359 @@ input:checked+.slider:before {
     transform: scale(0.98);
     filter: brightness(0.95);
     transition: all 0.2s;
+}
+
+/* 表情网格容器 (Grid Layout) */
+.sticker-grid {
+    display: grid;
+    /* 3列布局 (显示名字需要宽一点的空间) */
+    grid-template-columns: repeat(3, 1fr);
+    gap: 12px;
+    padding-bottom: 80px;
+    /* 底部留出空间给操作栏 */
+}
+
+/* 表情网格容器 */
+#sticker-grid-container {
+    display: block !important;
+    /* 强制覆盖 grid */
+    position: relative;
+    /* 虚拟列表必需 */
+    width: 100%;
+    height: auto;
+    min-height: 300px;
+    /* 给点最小高度，方便空状态居中 */
+    box-sizing: border-box;
+    padding-bottom: 80px;
+}
+
+/* 单个表情格子 */
+.sticker-cell {
+    /* 🟢 [新增] 虚拟列表核心：绝对定位 */
+    position: absolute;
+    left: 0;
+    top: 0;
+
+    /* 🟢 [新增] 确保宽度由 JS 控制，这里设个初始值 */
+    width: 30%;
+
+    /* 原有样式保持不变 */
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+    overflow: hidden;
+    padding-bottom: 0;
+    display: flex;
+    flex-direction: column;
+    border: 2px solid transparent;
+    transition: transform 0.1s, border-color 0.2s;
+    /* 稍微优化一下动画 */
+}
+
+
+.sticker-cell:active {
+    transform: scale(0.95);
+    background: #F9F9FC;
+}
+
+/* 图片自适应居中 */
+.sticker-cell img {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    max-width: 90%;
+    max-height: 90%;
+    object-fit: contain;
+}
+
+/* 弹窗中的上传预览框 */
+#st-upload-box:active {
+    background: #f0f0f0;
+    border-color: var(--theme-purple);
+}
+
+/* 针对分类胶囊的微调 (复用 wb-cat-pill 样式，但确保容器背景色一致) */
+#sticker-pack-bar {
+    padding-bottom: 10px;
+}
+
+.sticker-img-box {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    position: relative;
+    background: #fdfdfd;
+}
+
+.sticker-img-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: contain;
+    padding: 5px;
+    /* 图片内边距 */
+    box-sizing: border-box;
+}
+
+/* 名字区域 */
+.sticker-name {
+    font-size: 11px;
+    color: #666;
+    text-align: center;
+    padding: 6px 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    background: #fff;
+    border-top: 1px solid #f5f5f5;
+}
+
+/* --- 选中模式样式 --- */
+
+/* 选中状态 */
+.sticker-cell.selected-mode {
+    transform: scale(0.95);
+}
+
+.sticker-cell.selected {
+    border-color: var(--theme-purple);
+    background: #F4F4FF;
+}
+
+.sticker-check-overlay {
+    position: absolute;
+    top: 5px;
+    right: 5px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    border: 2px solid #ddd;
+    background: rgba(255, 255, 255, 0.8);
+    display: none;
+    /* 默认隐藏 */
+    z-index: 10;
+    align-items: center;
+    justify-content: center;
+}
+
+/* 在选择模式下显示圆圈 */
+.sticker-cell.selected-mode .sticker-check-overlay {
+    display: flex;
+}
+
+/* 选中后的圆圈样式 */
+.sticker-cell.selected .sticker-check-overlay {
+    background: var(--theme-purple);
+    border-color: var(--theme-purple);
+}
+
+.sticker-cell.selected .sticker-check-overlay::after {
+    content: '';
+    width: 8px;
+    height: 4px;
+    border-left: 2px solid #fff;
+    border-bottom: 2px solid #fff;
+    transform: rotate(-45deg) translate(1px, -1px);
+}
+
+/* 图片预览大图 */
+.preview-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 1000;
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+}
+
+.preview-overlay img {
+    max-width: 95%;
+    max-height: 80%;
+    object-fit: contain;
+    border-radius: 8px;
+}
+
+/* 表情面板容器 (悬浮在输入框上方) */
+#chat-sticker-panel {
+    position: absolute;
+    /* 核心修改：抬高底部距离 */
+    /* 60px 是底部输入框的大致高度，再加 10px 间距，env() 是适配全面屏小黑条 */
+    bottom: calc(65px + env(safe-area-inset-bottom));
+    left: 0;
+
+    /* 宽度减去左右边距 */
+    width: calc(100% - 24px);
+    height: 250px;
+    /* 高度稍微改小一点点，避免太高挡住太多消息 */
+
+    /* 四周圆角 + 悬浮阴影 */
+    margin: 0 12px;
+    /* 左右边距 12px */
+    border-radius: 20px;
+    /* 圆角 */
+    background: #fff;
+    /* 纯白背景 */
+    box-shadow: 0 5px 25px rgba(0, 0, 0, 0.15);
+    /* 阴影 */
+
+    z-index: 60;
+    display: flex;
+    flex-direction: column;
+
+    padding-bottom: 10px;
+    box-sizing: border-box;
+
+    /* 动画效果 */
+    transform: translateY(20px);
+    opacity: 0;
+    transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    pointer-events: none;
+    /* 没显示时不可点击 */
+}
+
+/* 显示状态 */
+#chat-sticker-panel.show {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+}
+
+/* 顶部 Tab 栏微调 */
+.sticker-panel-header-bar {
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+    background: transparent;
+    padding-right: 10px;
+    border-radius: 20px 20px 0 0;
+    /* 跟随父容器圆角 */
+}
+
+.chat-sticker-grid-layout {
+    display: grid;
+    /* 🟢【核心】自动填充：每个格子最小 70px，空间够就多放几个，不够就换行 */
+    grid-template-columns: repeat(auto-fill, minmax(70px, 1fr));
+    gap: 12px;
+    padding: 12px;
+}
+
+/* 单个表情项 */
+.chat-sticker-grid-item {
+    aspect-ratio: 1 / 1;
+    /* 保持正方形 */
+    display: flex;
+    flex-direction: column;
+    /* 关键：改为垂直排列 */
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    cursor: pointer;
+    background: #f9f9f9;
+    transition: background 0.1s;
+    overflow: hidden;
+    /* 防止文字溢出 */
+    padding: 4px;
+    /* 加一点内边距 */
+    box-sizing: border-box;
+}
+
+.chat-sticker-grid-item:active {
+    background: #eaeaea;
+    transform: scale(0.95);
+}
+
+/* 图片样式调整：留出空间给文字 */
+.chat-sticker-grid-item img {
+    width: 100%;
+    height: 65%;
+    /* 图片占约 65% 高度 */
+    object-fit: contain;
+    pointer-events: none;
+    margin-bottom: 2px;
+}
+
+/* 新增：表情名称（含义）样式 */
+.chat-sticker-name {
+    font-size: 10px;
+    color: #888;
+    width: 100%;
+    text-align: center;
+    white-space: nowrap;
+    /* 不换行 */
+    overflow: hidden;
+    /* 超出隐藏 */
+    text-overflow: ellipsis;
+    /* 超出显示省略号 */
+    line-height: 1.2;
+}
+
+/* 2. 交互状态：当聊天窗口拥有 .panel-open 类时 */
+
+/* Footer 上移 */
+#app-conversation.panel-open .chat-footer {
+    bottom: 280px;
+    /* 顶上去的高度 */
+    border-bottom: 1px solid #f0f0f0;
+    /* 加个底边分割线 */
+}
+
+/* Chat Body 增加底部留白，防止内容被遮挡 */
+#app-conversation.panel-open #chat-body {
+    padding-bottom: calc(280px + 60px + env(safe-area-inset-bottom)) !important;
+}
+
+/* 3. 过渡动画 (让上移丝滑) */
+.chat-footer {
+    transition: bottom 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+#chat-body {
+    transition: padding-bottom 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}
+
+/* 4. 聊天面板里的网格项 */
+.chat-sticker-item {
+    position: absolute;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    cursor: pointer;
+}
+
+.chat-sticker-item:active {
+    background-color: rgba(0, 0, 0, 0.05);
+}
+
+.chat-sticker-item img {
+    max-width: 80%;
+    max-height: 80%;
+    object-fit: contain;
+    pointer-events: none;
+    /* 防止点击图片本身产生拖拽 */
+}
+
+.st-mount-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 16px;
+    background: #fff;
+    border-bottom: 1px solid #f9f9f9;
+    cursor: pointer;
+}
+
+.st-mount-item:last-child {
+    border-bottom: none;
+}
+
+/* 复选框样式 */
+.st-mount-checkbox {
+    width: 20px;
+    height: 20px;
+    accent-color: var(--theme-purple);
 }

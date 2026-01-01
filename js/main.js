@@ -81,7 +81,11 @@ window.closeApp = function (id) {
                 console.log("联系人编辑页资源已释放");
             }, 400);
         }
-
+        if (id === 'sticker-mgr') {
+            setTimeout(() => {
+                if (window.cleanStickerMemory) window.cleanStickerMemory();
+            }, 300);
+        }
         // [补充] 针对 'persona-mgr' (我的身份管理) 的清理，逻辑类似
         if (id === 'persona-mgr') {
             setTimeout(() => {
@@ -1056,108 +1060,121 @@ window.triggerAIResponse = async function (btnElement) {
 };
 async function handleGroupChat(chat, userPersona, hostRec, modelRec, dbKeys, tempRec) {
     const messages = await window.dbSystem.getMessages(chat.id);
-    const limit = chat.historyLimit || 20;
+    const limit = chat.historyLimit || 25;
 
-    // 1. 准备群成员数据
-    const memberData = [];
-    const nameToIdMap = {};
+    // --- 1. 准备表情包上下文 ---
+    // 务必确保 main.js 里有 getChatStickerContext 这个辅助函数
+    // 如果没有，请把上一条回复里的那个函数加上
+    const stickerCtx = await getChatStickerContext(chat);
+    // -------------------------
 
-    for (const uid of chat.members) {
-        const u = await window.dbSystem.getChar(uid);
-        if (u) {
-            const isMe = (u.id === userPersona.id);
-            memberData.push({
-                name: u.name,
-                desc: u.desc || "无特殊设定",
-                isMe: isMe
-            });
-            nameToIdMap[u.name] = u.id;
+    // 2. 准备群成员信息
+    const memberIds = chat.members;
+    const memberProfiles = [];
+    const idToNameMap = {}; // ID -> 名字 (用于历史记录)
+    const nameToIdMap = {}; // 名字 -> ID (用于解析AI回复)
+
+    for (const mid of memberIds) {
+        // 获取角色数据
+        let char = null;
+        if (mid === userPersona.id) {
+            char = userPersona;
+        } else {
+            char = await window.dbSystem.getChar(mid);
+        }
+
+        if (char) {
+            if (mid !== userPersona.id) memberProfiles.push(char); // 只有NPC进Prompt的角色列表
+            idToNameMap[mid] = char.name;
+            nameToIdMap[char.name] = mid;
         }
     }
 
-    // 2. 注入世界书
+    // 3. 构建 System Prompt
+    const charDefs = memberProfiles.map(c => `Name: ${c.name}\nDescription: ${c.desc || "无"}`).join('\n---\n');
+
+    // 注入环境 & 世界书
     const historyForScan = messages.slice(-limit).map(m => ({ content: m.text }));
-    let worldInfo = { top: "", bottom: "" };
-    try {
-        worldInfo = await window.injectWorldInfo(chat, historyForScan);
-    } catch (e) { }
-
-    // 3. 构建成员列表
-    const characterListText = memberData.map(m =>
-        `- ${m.name} ${m.isMe ? '(User/主角)' : ''}: ${m.desc}`
-    ).join('\n');
-
-    // 4. 环境信息
+    const worldInfo = await window.injectWorldInfo(chat, historyForScan);
     let envInfo = "";
-    try {
-        envInfo = await window.generateEnvPrompt(chat, userPersona);
-    } catch (e) { }
+    try { envInfo = await window.generateEnvPrompt(chat, userPersona); } catch (e) { }
 
-    // 5. [核心修改] System Prompt：强制规定格式，严禁 JSON
     const systemPrompt = `
-# Role: Group Chat Director (群聊导演)
-你现在是一个“群聊剧场导演”。
-
-# World Knowledge (世界认知)
+# Group Chat Protocol
+你正在参与一个群聊。请根据上下文扮演其中的角色（除了用户 ${userPersona.name}）。
 ${worldInfo.top}
+# Characters
+${charDefs}
+# World Knowledge
 
-# Context (场景与成员)
-${envInfo}
-【当前群成员】：
-${characterListText}
 ${worldInfo.bottom}
 
-# Task (任务)
-User (扮演 ${userPersona.name}) 刚刚发送了消息。
-请根据人物关系，**安排 2 到 4 条回复**，让群聊热闹起来！
-允许其他群友插嘴、吐槽、复读或互动。
+# Context
+${envInfo}
+当前用户：${userPersona.name} (${userPersona.desc || "无"})
 
-# Output Format (输出协议 - 最高优先级)
-1. **严禁使用 JSON 格式！严禁使用 Markdown 代码块！**
-2. 必须使用纯文本格式，以 "[消息] 名字：" 作为每一段的开头。
-3. **支持内容换行**：如果角色要发送列表或长文，请直接换行，不要把所有内容挤在一行。
+# Sticker System (表情包系统)
+${stickerCtx.prompt} 
+(规则：若要发送表情，请使用格式 "[表情] 角色名：表情名"。)
 
-【正确示范】：
-[消息] 团长: 听我指挥：
-1. 法师站左边
-2. 战士站右边
-[消息] 法师: 收到。
-
-【错误示范 (绝对禁止)】：
-{"messages": [{"speaker": "团长", "text": "..."}]} 
+# Output Format
+请严格遵守指令格式，可以连续输出多条指令：
+1. 发送文本："[消息] 角色名：内容"
+2. 发送表情："[表情] 角色名：表情名"
+3. 示例：
+   [消息] 法师：收到，马上行动！
+   [表情] 法师：严肃
+   [表情] 团长：开心
 `.trim();
 
-    // 6. 构建历史消息
+    // 4. 构建历史记录 (图片 -> 文本反解)
     const recentMessages = messages.slice(-limit);
     const apiMessages = [{ role: "system", content: systemPrompt }];
 
     for (const msg of recentMessages) {
-        let senderName = "未知";
-        if (msg.senderId === userPersona.id) {
-            senderName = userPersona.name;
-        } else {
-            const senderChar = await window.dbSystem.getChar(msg.senderId);
-            if (senderChar) senderName = senderChar.name;
+        let name = idToNameMap[msg.senderId] || "未知";
+        let contentText = msg.text;
+
+        // --- 反解逻辑：如果是图片消息，尝试转回 [表情] xxx ---
+        if (msg.type === 'image') {
+            const stickerName = stickerCtx.srcMap[msg.text];
+            if (stickerName) {
+                // AI 看到的是： [表情] 法师：开心
+                // 这里我们在历史记录里直接模拟成 AI 的输出格式，方便它模仿
+                apiMessages.push({
+                    role: "assistant", // 假装是 AI 发的指令
+                    content: `[表情] ${name}：${stickerName}`
+                });
+                continue; // 跳过常规 push
+            } else {
+                contentText = "[图片]";
+            }
         }
+        // --------------------------------------------------
+
         const role = (msg.senderId === userPersona.id) ? "user" : "assistant";
+
+        // 用户发的消息，或者无法反解的普通文本消息
+        // 为了保持格式统一，我们把历史记录也包装成Tag格式
         apiMessages.push({
             role: role,
-            content: `[消息] ${senderName}：${msg.text}`
+            content: `[消息] ${name}：${contentText}`
         });
     }
 
-    // 7. UI 反馈 (Typing)
+    // UI Loading
     if (chatScroller) {
         chatScroller.append({
             chatId: chat.id,
             text: `<div class="typing-bubble"><div class="typing-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>`,
-            senderId: -1,
+            senderId: memberProfiles[0]?.id || 0,
             isTyping: true
         });
+        scrollToBottom();
     }
 
-    // 8. 请求 API
-    const temperature = tempRec ? parseFloat(tempRec.value) : 1.0;
+    // 5. 请求 API
+    let temperature = tempRec ? parseFloat(tempRec.value) : 0.85;
     const response = await requestWithKeyRotation(`${hostRec.value}/chat/completions`, (key) => ({
         method: 'POST',
         headers: { 'Authorization': `Bearer ${key}`, 'Content-Type': 'application/json' },
@@ -1169,53 +1186,95 @@ User (扮演 ${userPersona.name}) 刚刚发送了消息。
     }), dbKeys);
 
     const data = await response.json();
-    if (chatScroller) chatScroller.removeLast();
+    if (window.chatScroller) window.chatScroller.removeLast();
 
-    // --- 9. 解析结果 (终极切割版，支持多行) ---
+    // --- 6. [核心修改] 解析结果 (正则匹配流) ---
     let content = data.choices[0].message.content;
-    let actions = [];
 
-    // 预处理：统一冒号
-    let rawText = content.replace(/：/g, ':').trim();
+    // 预处理：把中文冒号换成英文，方便正则
+    let rawText = content.replace(/：/g, ':');
 
-    // 核心：以 [消息] 切割，不管里面有多少换行
-    let chunks = rawText.split(/\[消息\]/i);
+    // 正则解释：
+    // \[ (消息|表情) \]  -> 捕获 Tag 类型
+    // \s* ([^:]+?)       -> 捕获 名字 (非贪婪，直到冒号)
+    // \s* : \s* -> 匹配 冒号
+    // (.+?)              -> 捕获 内容 (非贪婪)
+    // (?=\s*\[(?:消息|表情)\]|$) -> 向前看：直到遇到下一个 Tag 或 字符串结尾
+    const blockRegex = /\[(消息|表情)\]\s*([^:]+?)\s*:\s*(.+?)(?=\s*\[(?:消息|表情)\]|$)/gis;
 
-    for (let chunk of chunks) {
-        let trimmedChunk = chunk.trim();
-        if (!trimmedChunk) continue;
+    let match;
+    let msgQueue = [];
 
-        let firstColonIndex = trimmedChunk.indexOf(':');
-        if (firstColonIndex !== -1) {
-            let name = trimmedChunk.substring(0, firstColonIndex).trim();
-            // 冒号后面的所有内容（包括换行符）都是正文
-            let text = trimmedChunk.substring(firstColonIndex + 1).trim();
+    while ((match = blockRegex.exec(rawText)) !== null) {
+        const tagType = match[1]; // "消息" 或 "表情"
+        const name = match[2].trim();
+        const body = match[3].trim();
 
-            if (name && text) {
-                actions.push({ speaker: name, text: text });
+        // 查找发言人 ID
+        const speakerId = nameToIdMap[name];
+        if (!speakerId) {
+            console.warn(`无法识别的角色: ${name}，跳过`);
+            continue;
+        }
+
+        if (tagType === '表情') {
+            // --- 处理表情 ---
+            const stickerSrc = stickerCtx.nameMap[body]; // body 就是表情名
+            if (stickerSrc) {
+                msgQueue.push({ senderId: speakerId, text: stickerSrc, type: 'image' });
+            } else {
+                // AI 乱编了一个表情名，降级为文本发送，或者你要是嫌烦可以不发
+                // msgQueue.push({ senderId: speakerId, text: `(试图发送表情: ${body})`, type: 'text' });
             }
+        } else {
+            // --- 处理消息 ---
+            msgQueue.push({ senderId: speakerId, text: body, type: 'text' });
         }
     }
 
-    // 10. 发送消息
-    for (let i = 0; i < actions.length; i++) {
-        const action = actions[i];
-        const speakerName = action.speaker;
-        const text = action.text;
+    // 兜底：如果正则没匹配到任何东西 (AI 没按格式输出)，尝试直接当文本发给第一个人
+    if (msgQueue.length === 0 && rawText.trim()) {
+        const fallbackId = memberProfiles[0]?.id || 0;
+        msgQueue.push({ senderId: fallbackId, text: rawText, type: 'text' });
+    }
 
-        const speakerId = Object.keys(nameToIdMap).find(k => k === speakerName) ? nameToIdMap[speakerName] : null;
+    // 7. 执行发送队列
+    for (let i = 0; i < msgQueue.length; i++) {
+        const item = msgQueue[i];
 
-        if (speakerId) {
-            if (i > 0) await new Promise(r => setTimeout(r, 800));
-            await window.dbSystem.addMessage(chat.id, text, speakerId, 'text');
-            if (chatScroller) {
-                chatScroller.append({
-                    chatId: chat.id, text: text, senderId: speakerId, time: new Date()
+        if (i > 0) {
+            // 延迟模拟：使用 window.chatScroller
+            if (window.chatScroller) {
+                window.chatScroller.append({
+                    chatId: chat.id,
+                    text: `<div class="typing-bubble"><div class="typing-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>`,
+                    senderId: memberProfiles[0]?.id || 0,
+                    isTyping: true
                 });
+                scrollToBottom();
             }
-            await window.dbSystem.chats.update(chat.id, { lastMsg: `${speakerName}: ${text}`, updated: new Date() });
-            if (window.renderChatUI) window.renderChatUI();
+            const delay = 500 + Math.random() * 500;
+            await new Promise(r => setTimeout(r, delay));
+            if (window.chatScroller) window.chatScroller.removeLast();
         }
+
+        // 1. 写入数据库，并 【获取返回的 ID】
+        const newMsgId = await window.dbSystem.addMessage(chat.id, item.text, item.senderId, item.type);
+
+        // 2. 渲染上屏：使用 window.chatScroller 并传入 ID
+        if (window.chatScroller) {
+            window.chatScroller.append({
+                id: newMsgId,  // <--- 关键！传入 ID
+                chatId: chat.id,
+                text: item.text,
+                senderId: item.senderId,
+                type: item.type,
+                time: new Date()
+            });
+        }
+
+        const previewText = (item.type === 'image') ? `${idToNameMap[item.senderId]}: [表情]` : item.text;
+        await window.dbSystem.chats.update(chat.id, { lastMsg: previewText, updated: new Date() });
     }
 }
 
@@ -1227,7 +1286,7 @@ async function handlePrivateChat(chat, userPersona, hostRec, modelRec, dbKeys, t
     // 单聊默认稍微多一点，设为 25
     const limit = chat.historyLimit || 25;
     // -----------------------------
-
+    const stickerCtx = await getChatStickerContext(chat);
     // 1. 确定 AI 身份
     const memberIds = chat.members;
     let nextSpeakerId = memberIds.find(id => id !== userPersona.id);
@@ -1273,12 +1332,13 @@ ${worldInfo.bottom}
 # Context (当前环境)
 ${currentPartnerInfo}
 ${envInfo}
-
+${stickerCtx.prompt}
 # Output Format (输出协议)
 请遵循以下规则：
 1. **分段发送**：将回复拆分为 2~5 条简短的消息。
 2. **口语化**：严禁书面语，使用符合你人设的口癖、语气词。
 3. **格式强制**：每一行必须严格使用 "[消息] ${speaker.name}：内容" 的格式。
+4. 如果要发表情，请单独一行写 "[消息] ${speaker.name}：[表情] 表情名"。
 
 # Deep Immersion (深度沉浸指令)
 1. 你的每一次回复必须严格符合【核心设定】中的性格和背景。
@@ -1300,10 +1360,23 @@ ${envInfo}
         if (msg.senderId === speaker.id) prefixName = speaker.name;
         else if (msg.senderId === userPersona.id) prefixName = userPersona.name;
 
+        // --- 【核心修改：反解图片】 ---
+        let contentText = msg.text;
+        if (msg.type === 'image') {
+            // 尝试从 srcMap 中找到对应的表情名
+            const stickerName = stickerCtx.srcMap[msg.text];
+            if (stickerName) {
+                contentText = `[表情] ${stickerName}`; // AI 看到的是 "[表情] 滑稽"
+            } else {
+                contentText = "[图片]"; // 没识别出来的图片
+            }
+        }
+        // ---------------------------
+
         const role = (msg.senderId === userPersona.id) ? "user" : "assistant";
         apiMessages.push({
             role: role,
-            content: `[消息] ${prefixName}：${msg.text}`
+            content: `[消息] ${prefixName}：${contentText}`
         });
     }
 
@@ -1332,92 +1405,94 @@ ${envInfo}
     }), dbKeys);
 
     const data = await response.json();
-    if (chatScroller) chatScroller.removeLast();
+    if (window.chatScroller) window.chatScroller.removeLast();
 
     // --- 9. 解析结果 (终极分割版) ---
     let content = data.choices[0].message.content;
-    let msgQueue = [];
-
-    // 1. 预处理：统一冒号，去除首尾空白
-    // 这一步很重要，防止 AI 混用中英文冒号导致解析失败
     let rawText = content.replace(/：/g, ':').trim();
-
-    // 2. 核心逻辑：直接使用正则表达式拆分数组
-    // split(/\[消息\]/i) 会以 "[消息]" 为界把字符串切成几块
-    // 比如 "A[消息]B[消息]C" 会变成 ["A", "B", "C"]
     let chunks = rawText.split(/\[消息\]/i);
 
-    // 3. 遍历每一块内容
+    let msgQueue = [];
+
     for (let chunk of chunks) {
         let trimmedChunk = chunk.trim();
-        if (!trimmedChunk) continue; // 跳过空块
+        if (!trimmedChunk) continue;
 
-        // 寻找第一个冒号的位置
-        // 我们只切分第一个冒号，冒号后面的所有内容（包括换行、甚至其他的冒号）都属于正文
         let firstColonIndex = trimmedChunk.indexOf(':');
-
         if (firstColonIndex !== -1) {
-            // --- 情况 A：标准格式 (有名字，有冒号) ---
-
-            // 名字：冒号左边的部分
             let name = trimmedChunk.substring(0, firstColonIndex).trim();
-            // 内容：冒号右边的所有部分
             let text = trimmedChunk.substring(firstColonIndex + 1).trim();
 
             if (text) {
-                // 如果是 handleGroupChat，你可能需要在这里把 name 转成 speakerId
-                // 如果是 handlePrivateChat，这一步主要是提取 text
-                msgQueue.push({ speaker: name, text: text });
+                // --- 【核心修改：检测 AI 是否发了表情】 ---
+                // 格式如： [表情] 开心
+                const stickerRegex = /^\[表情\]\s*(.+)$/i;
+                const match = text.match(stickerRegex);
+
+                if (match) {
+                    const stickerName = match[1].trim();
+                    const stickerSrc = stickerCtx.nameMap[stickerName]; // 查找图片Base64
+
+                    if (stickerSrc) {
+                        // 找到了！推入队列，类型标记为 image
+                        msgQueue.push({ speaker: name, text: stickerSrc, type: 'image' });
+                    } else {
+                        // AI 瞎编了一个不存在的表情，转为普通文本吐槽回去，或者直接显示文本
+                        msgQueue.push({ speaker: name, text: `(试图发送表情 "${stickerName}" 失败)`, type: 'text' });
+                    }
+                } else {
+                    // 普通文本
+                    msgQueue.push({ speaker: name, text: text, type: 'text' });
+                }
+                // -------------------------------------
             }
         } else {
-            // --- 情况 B：没有冒号的漏网之鱼 (比如你截图里的 "彼此彼此吧") ---
-            // 这种通常出现在第一句，或者 AI 忘记写名字了
-            // 我们直接把它当成正文，如果是单聊，就默认是对方说的
-            // 过滤掉系统指令(#)
+            // 处理没有冒号的漏网之鱼
             if (!trimmedChunk.startsWith('#') && !trimmedChunk.startsWith('User')) {
-                // 如果没有名字，我们可以给个默认标记，或者在后续逻辑里只取 text
-                msgQueue.push({ speaker: null, text: trimmedChunk });
+                msgQueue.push({ speaker: null, text: trimmedChunk, type: 'text' });
             }
         }
     }
 
-    // 下面需要适配一下你原来的 msgQueue 格式
-    // 如果你原来的代码是直接存 string 数组，就用 map 转换一下
-    // 假设原来的逻辑是遍历 msgQueue 发送：
-    let finalQueue = msgQueue.map(item => item.text);
-
-    // --- 适配结束，继续你的发送逻辑 ---
-    // --- 模拟连发间隔 ---
+    // --- 10. 执行发送 (修改：支持 type 传递) ---
     for (let i = 0; i < msgQueue.length; i++) {
-        const text = (typeof msgQueue[i] === 'object') ? msgQueue[i].text : msgQueue[i];
+        const item = msgQueue[i];
+        const text = item.text;
+        const type = item.type || 'text';
 
         if (i > 0) {
-            if (chatScroller) {
-                chatScroller.append({
+            // 连发延迟：使用 window.chatScroller
+            if (window.chatScroller) {
+                window.chatScroller.append({
                     chatId: chat.id,
                     text: `<div class="typing-bubble"><div class="typing-dots"><div class="dot"></div><div class="dot"></div><div class="dot"></div></div></div>`,
-                    senderId: nextSpeakerId,
+                    senderId: nextSpeakerId, // 单聊的 nextSpeakerId 在函数开头定义过
                     isTyping: true
                 });
-                scrollToBottom(); // 确保看到最新的typing
+                scrollToBottom();
             }
-
-            // 动态计算延迟：字数越多，等待越久
-            const delay = 600 + Math.random() * 800 + (text.length * 30);
+            const delay = 600 + Math.random() * 800 + (type === 'image' ? 500 : text.length * 30);
             await new Promise(r => setTimeout(r, delay));
-
-            if (chatScroller) chatScroller.removeLast();
+            if (window.chatScroller) window.chatScroller.removeLast();
         }
 
-        await window.dbSystem.addMessage(chat.id, text, nextSpeakerId, 'text');
+        // 1. 写入数据库，并 【获取返回的 ID】
+        const newMsgId = await window.dbSystem.addMessage(chat.id, text, nextSpeakerId, type);
 
-        if (chatScroller) {
-            chatScroller.append({
-                chatId: chat.id, text: text, senderId: nextSpeakerId, time: new Date()
+        // 2. 渲染上屏：使用 window.chatScroller 并传入 ID
+        if (window.chatScroller) {
+            window.chatScroller.append({
+                id: newMsgId, // <--- 关键！
+                chatId: chat.id,
+                text: text,
+                senderId: nextSpeakerId,
+                type: type,
+                time: new Date()
             });
         }
 
-        await window.dbSystem.chats.update(chat.id, { lastMsg: text, updated: new Date() });
+        const previewText = (type === 'image') ? '[表情]' : text;
+        await window.dbSystem.chats.update(chat.id, { lastMsg: previewText, updated: new Date() });
     }
 }
 /* =========================================
@@ -2052,135 +2127,180 @@ async function fetchEnvData(realCityName) {
 
 // [完整修复版] 注入 Prompt 生成器 (保留所有功能)
 window.generateEnvPrompt = async function (chat, userPersona) {
+    // 1. 基础开关校验 (如果你想关掉整个环境增强，才return)
     if (!chat.envEnabled) return "";
 
-    // 1. 基础校验
-    if (!chat.envUserCity || !chat.envUserCity.isValid) return "";
-
-    // 【修复点 1】直接使用传入的 userPersona
     const currentUser = userPersona;
-    if (!currentUser) return "";
+    // 如果没有 userPersona，尝试用全局兜底，还是没有才退出
+    const safeUser = currentUser || (await window.dbSystem.getCurrent());
+    if (!safeUser) return "";
 
-    const userName = currentUser.name;
-    const myId = currentUser.id;
+    const userName = safeUser.name;
+    const myId = safeUser.id;
 
-    // --- 【完整保留】时间流逝感知逻辑 ---
+    // 获取消息记录
     const messages = await window.dbSystem.getMessages(chat.id);
-    let timeGapDesc = "这是对话的开始。";
-    let timeGapInstruction = "";
+
+    // =========================================================
+    // 模块一：时间流逝剧本 (已修复重复问题)
+    // =========================================================
+    let timeGapDesc = "";
 
     if (messages.length > 0) {
-        // 1. 获取最新的一条消息 (刚刚用户发的)
-        const currentMsg = messages[messages.length - 1];
-        const currentTime = currentMsg.time instanceof Date ? currentMsg.time : new Date(currentMsg.time);
+        const now = new Date();
+        let userConsecutiveMsgs = [];
+        let lastAiMsg = null;
 
-        // 2. 倒序查找：找到最近一条“非用户发送”的消息 (即 Char 的最后回复)
-        let lastCharMsg = null;
-        for (let i = messages.length - 2; i >= 0; i--) {
-            // 如果发送者 ID 不等于我的 ID，说明是 Char 发的
-            if (messages[i].senderId !== myId) {
-                lastCharMsg = messages[i];
-                break; // 找到了就停止
-            }
-        }
-
-        // 3. 计算时间差
-        if (lastCharMsg) {
-            const prevTime = lastCharMsg.time instanceof Date ? lastCharMsg.time : new Date(lastCharMsg.time);
-            const diffMins = Math.floor((currentTime - prevTime) / 60000);
-
-            if (diffMins < 10) {
-                timeGapDesc = "对话正在热烈进行中。";
-            } else if (diffMins < 60) {
-                timeGapDesc = `距离上一句话过去了 ${diffMins} 分钟。`;
-                timeGapInstruction = "如果是你发言，可以表现出刚才稍微忙了一会儿。";
-            } else if (diffMins < 24 * 60) {
-                const hours = Math.floor(diffMins / 60);
-                const mins = diffMins % 60;
-                timeGapDesc = `距离上次回复已经过去了 ${hours} 小时 ${mins} 分钟。`;
-                timeGapInstruction = "⚠️ 重点：User已经消失很久了。请根据这个较长的时间间隔，自然地做出反应（如问候“下午好/晚上好”，或问User刚才去哪了，为什么不回消息）。";
+        // 倒序找 User 连发块
+        for (let i = messages.length - 1; i >= 0; i--) {
+            const msg = messages[i];
+            if (msg.senderId === myId) {
+                userConsecutiveMsgs.unshift(msg);
             } else {
-                const days = Math.floor(diffMins / (24 * 60));
-                timeGapDesc = `距离上次回复已经过去了 ${days} 天！`;
-                timeGapInstruction = "⚠️ 重点：User已经失踪好几天了！请表现出久别重逢的惊讶、担心或生气。";
+                lastAiMsg = msg;
+                break;
             }
-        } else {
-            timeGapDesc = "这是新的对话，Char 尚未发言。";
         }
-    }
-    // ---------------------------
 
-    const userData = await fetchEnvData(chat.envUserCity.real);
-    if (!userData) return "";
+        let timeline = [];
 
-    const getPeriod = (timeStr) => {
-        const hour = parseInt(timeStr.split(':')[0]);
-        if (hour >= 5 && hour < 12) return "早晨";
-        if (hour >= 12 && hour < 18) return "下午";
-        if (hour >= 18 && hour < 22) return "晚上";
-        return "深夜";
-    };
-    const userPeriod = getPeriod(userData.time);
+        if (lastAiMsg) {
+            // A. 第一句的间隔
+            const aiTime = new Date(lastAiMsg.time);
+            const firstUserTime = new Date(userConsecutiveMsgs[0].time);
+            const initialDiff = Math.floor((firstUserTime - aiTime) / 60000);
 
-    const isGroup = (chat.name || chat.members.length > 2);
-    let promptParts = [];
+            if (initialDiff < 2) {
+                // 秒回就不废话了，省 Token
+            } else if (initialDiff > 60) {
+                const hours = (initialDiff / 60).toFixed(1);
+                timeline.push(`(距离你上次发言过去了 ${hours} 小时，User 回复了你)`);
+            } else if (initialDiff >= 5) {
+                timeline.push(`(过了 ${initialDiff} 分钟，User 回复了你)`);
+            }
 
-    promptParts.push(`⏱️ [时间感知]: ${timeGapDesc}`);
-    if (timeGapInstruction) promptParts.push(`👉 [指导]: ${timeGapInstruction}`);
+            // B. User 连发中间的间隔 (修复：不再复述内容)
+            if (userConsecutiveMsgs.length > 1) {
+                for (let i = 1; i < userConsecutiveMsgs.length; i++) {
+                    const prevMsg = userConsecutiveMsgs[i - 1];
+                    const currMsg = userConsecutiveMsgs[i];
 
-    promptParts.push(`📍 ${userName}的位置 (${chat.envUserCity.fake}): ${userData.time} (${userPeriod}), ${userData.weather}, ${userData.temp}°C`);
+                    const t1 = new Date(prevMsg.time);
+                    const t2 = new Date(currMsg.time);
+                    const gap = Math.floor((t2 - t1) / 60000);
 
-    if (isGroup) {
-        // === 【完整保留】群聊逻辑 ===
-        const memberMap = chat.envMemberMap || {};
-        let groupStatusList = [];
-
-        for (const mid of chat.members) {
-            if (currentUser && mid === currentUser.id) continue;
-            const setting = memberMap[mid];
-            if (setting && setting.isValid) {
-                const char = await window.dbSystem.getChar(mid);
-                const env = await fetchEnvData(setting.real);
-                if (char && env) {
-                    const charPeriod = getPeriod(env.time);
-                    groupStatusList.push(`- ${char.name} @ ${setting.fake}: ${env.time} (${charPeriod}), ${env.weather}`);
+                    // 间隔 > 10 分钟才提示
+                    if (gap > 10) {
+                        let gapStr = gap < 60 ? `${gap}分钟` : `${(gap / 60).toFixed(1)}小时`;
+                        // 【改动点】只描述动作，不复述内容，避免 AI 混乱
+                        timeline.push(`(User 停顿了 ${gapStr} 后发送了下一条)`);
+                    }
                 }
             }
-        }
 
-        if (groupStatusList.length === 0 && chat.envCharCity && chat.envCharCity.isValid) {
-            const commonEnv = await fetchEnvData(chat.envCharCity.real);
-            if (commonEnv) {
-                const p = getPeriod(commonEnv.time);
-                groupStatusList.push(`- (其他群成员) @ ${chat.envCharCity.fake}: ${commonEnv.time} (${p}), ${commonEnv.weather}`);
+            // C. 发完最后一句后的等待时间
+            const lastUserTime = new Date(userConsecutiveMsgs[userConsecutiveMsgs.length - 1].time);
+            const waitDiff = Math.floor((now - lastUserTime) / 60000);
+
+            if (waitDiff > 30) {
+                const waitHours = (waitDiff / 60).toFixed(1);
+                timeline.push(`(注意：User 发完这句话后，已经在屏幕前等待了 ${waitHours} 小时没有收到回复)`);
             }
+
+            timeGapDesc = timeline.join("\n");
+
+        } else {
+            // 开局
+            timeGapDesc = "(这是对话的开始)";
         }
+    }
+    // =========================================================
 
-        if (groupStatusList.length > 0) {
-            promptParts.push("🌍 群成员实时分布:");
-            promptParts.push(groupStatusList.join('\n'));
-            promptParts.push("💡 注意：群成员可能身处不同时区，请体现时空差异。");
-        }
 
-    } else {
-        // === 【完整保留】单聊逻辑 ===
-        if (chat.envCharCity && chat.envCharCity.isValid) {
-            const charData = await fetchEnvData(chat.envCharCity.real);
-            if (charData) {
-                const charPeriod = getPeriod(charData.time);
-                let timeDiffDesc = (userData.timezone === charData.timezone)
-                    ? "(同属一个时区)"
-                    : `(存在时差：${userName}是${userPeriod}，你是${charPeriod})`;
+    // =========================================================
+    // 模块二：地理位置与天气 (已修复“注入不进去”的问题)
+    // =========================================================
+    let locationParts = [];
 
-                promptParts.push(`📍 你的位置 (${chat.envCharCity.fake}): ${charData.time} (${charPeriod}), ${charData.weather}, ${charData.temp}°C`);
-                promptParts.push(`💡 提示: ${timeDiffDesc}。`);
+    // 只有当城市存在且有效时，才去请求天气
+    // 关键修复：即使这里失败，也不会 return ""，而是只显示时间
+    if (chat.envUserCity && chat.envUserCity.isValid) {
+        try {
+            const userData = await fetchEnvData(chat.envUserCity.real);
+
+            if (userData) {
+                // 计算时段 (上午/下午)
+                const getPeriod = (timeStr) => {
+                    const hour = parseInt(timeStr.split(':')[0]);
+                    if (hour >= 5 && hour < 12) return "早晨";
+                    if (hour >= 12 && hour < 18) return "下午";
+                    if (hour >= 18 && hour < 22) return "晚上";
+                    return "深夜";
+                };
+                const userPeriod = getPeriod(userData.time);
+
+                // 注入 User 位置
+                locationParts.push(`📍 ${userName}的位置 (${chat.envUserCity.fake}): ${userData.time} (${userPeriod}), ${userData.weather}, ${userData.temp}°C`);
+
+                // 处理对方/群成员位置 (依赖于 User 位置获取成功，因为要算时差)
+                const isGroup = (chat.name || chat.members.length > 2);
+
+                if (isGroup) {
+                    // 群聊位置逻辑
+                    const memberMap = chat.envMemberMap || {};
+                    let groupStatusList = [];
+                    for (const mid of chat.members) {
+                        if (mid === myId) continue; // 跳过自己
+                        const setting = memberMap[mid];
+                        if (setting && setting.isValid) {
+                            const char = await window.dbSystem.getChar(mid);
+                            const env = await fetchEnvData(setting.real);
+                            if (char && env) {
+                                const charPeriod = getPeriod(env.time);
+                                groupStatusList.push(`- ${char.name} @ ${setting.fake}: ${env.time} (${charPeriod}), ${env.weather}`);
+                            }
+                        }
+                    }
+                    if (groupStatusList.length > 0) {
+                        locationParts.push("🌍 群成员分布:\n" + groupStatusList.join('\n'));
+                    }
+                } else {
+                    // 单聊位置逻辑
+                    if (chat.envCharCity && chat.envCharCity.isValid) {
+                        const charData = await fetchEnvData(chat.envCharCity.real);
+                        if (charData) {
+                            const charPeriod = getPeriod(charData.time);
+                            let timeDiffDesc = (userData.timezone === charData.timezone)
+                                ? "" : ` (对方是${charPeriod})`;
+                            locationParts.push(`📍 你的位置 (${chat.envCharCity.fake}): ${charData.time}, ${charData.weather}, ${charData.temp}°C${timeDiffDesc}`);
+                        }
+                    }
+                }
             }
+        } catch (e) {
+            console.warn("天气获取失败，仅注入时间感知", e);
         }
     }
 
-    if (promptParts.length <= 2) return "";
+    // =========================================================
+    // 最终组装
+    // =========================================================
+    let finalPromptParts = [];
 
-    return `\n【🌍 实时环境同步】\n${promptParts.join('\n')}\n`;
+    // 只要有时间描述，就放进去
+    if (timeGapDesc) {
+        finalPromptParts.push(`⏱️ [时间流逝记录]:\n${timeGapDesc}`);
+    }
+
+    // 只要有位置描述，就放进去
+    if (locationParts.length > 0) {
+        finalPromptParts.push(...locationParts);
+    }
+
+    // 只有当两者都为空时，才返回空字符串
+    if (finalPromptParts.length === 0) return "";
+
+    return `\n【🌍 实时环境同步】\n${finalPromptParts.join('\n')}\n`;
 };
 /* =========================================
    [重构] 视觉设置逻辑 (支持群头像 + 成员独立设置)
@@ -2630,18 +2750,33 @@ window.addNewCategory = async function () {
 window.deleteCategory = async function (id) {
     if (!confirm("删除分类后，内容将移入'未分类'。继续吗？")) return;
 
-    // 找到目标分类 (未分类)
+    // 1. 尝试找到兜底分类
     const cats = await window.dbSystem.getCategories(currentWbTab);
-    const defaultCat = cats.find(c => c.name === '未分类' || c.name === '默认');
+    // 模糊匹配：找叫“未分类”或“默认”的，或者如果找不到，就找列表里的第一个不是要删除的那个
+    let defaultCat = cats.find(c => c.name === '未分类' || c.name === '默认');
 
+    // 如果还没找到，就随便找一个不是当前要删的ID
+    if (!defaultCat) {
+        defaultCat = cats.find(c => c.id !== id);
+    }
+
+    // 2. 移动内容 (如果有兜底分类)
     if (defaultCat) {
         const books = await window.dbSystem.worldbooks.where('categoryId').equals(id).toArray();
-        const ids = books.map(b => b.id);
-        if (ids.length > 0) {
-            await window.dbSystem.moveWorldBooks(ids, defaultCat.id);
+        const bookIds = books.map(b => b.id);
+        if (bookIds.length > 0) {
+            await window.dbSystem.moveWorldBooks(bookIds, defaultCat.id);
+        }
+    } else {
+        // 如果实在连个兜底的都没有（比如只剩这一个分类了），提示用户
+        const books = await window.dbSystem.worldbooks.where('categoryId').equals(id).count();
+        if (books > 0) {
+            alert("这是最后一个分类，且里面还有内容，无法删除！请先新建一个分类转移内容。");
+            return;
         }
     }
 
+    // 3. 执行删除
     await window.dbSystem.deleteCategory(id);
     renderCatMgrList();
     renderCategoryBar();
@@ -3192,3 +3327,886 @@ window.handleCopyMsg = function () {
     }
     hideMsgMenu();
 };
+let currentStickerPackId = null;
+let isStickerSelectMode = false; // 是否处于选择模式
+let selectedStickerIds = new Set(); // 选中的ID集合
+
+// 1. 打开表情包管理器
+window.openStickerManager = async function () {
+    window.openApp('sticker-mgr');
+    exitStickerSelectMode(); // 重置状态
+    await loadStickerPacks();
+};
+
+// 2. 加载分类 (保持不变)
+async function loadStickerPacks() {
+    const packs = await window.dbSystem.sticker_packs.toArray();
+    const container = document.getElementById('sticker-pack-bar');
+
+    // 默认选中第一个
+    if (!currentStickerPackId && packs.length > 0) {
+        currentStickerPackId = packs[0].id;
+    }
+
+    let html = '';
+
+    // 1. 渲染分类胶囊 (复用 wb-cat-pill 样式)
+    packs.forEach(p => {
+        const activeClass = (p.id === currentStickerPackId) ? 'active' : '';
+        html += `<div class="wb-cat-pill ${activeClass}" onclick="switchStickerPack(${p.id})">${p.name}</div>`;
+    });
+
+    // 2. 【核心修改】在末尾追加“管理按钮” (复用 wb-cat-add-btn 样式)
+    // 这样长得就和世界书那个加号完全一样了
+    html += `
+    <div class="wb-cat-add-btn" onclick="openStickerPackManager()">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor">
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+        </svg>
+    </div>`;
+
+    container.innerHTML = html;
+
+    // 加载内容
+    if (currentStickerPackId) {
+        await loadStickersInPack(currentStickerPackId);
+    } else {
+        document.getElementById('sticker-grid-container').innerHTML =
+            '<div style="width:100%;text-align:center;color:#ccc;padding:40px;">暂无表情包<br>点击右侧 + 号添加</div>';
+    }
+}
+
+// 3. 切换分类
+window.switchStickerPack = async function (id) {
+    currentStickerPackId = id;
+    // 切换分类时，如果是选择模式，建议退出，或者清空选择
+    selectedStickerIds.clear();
+    await loadStickerPacks();
+};
+
+// 4. [重构] 加载表情 (网格)
+async function loadStickersInPack(packId) {
+    // 不再一次性读取 array，而是直接调用虚拟列表初始化
+    if (window.initStickerScroller) {
+        window.initStickerScroller(packId);
+    } else {
+        console.error("render.js 未加载或未定义 initStickerScroller");
+    }
+}
+
+// 5. [新增] 预览大图
+window.openStickerPreview = function (src) {
+    const overlay = document.getElementById('sticker-preview-overlay');
+    const img = document.getElementById('sticker-preview-img');
+    img.src = src;
+    overlay.style.display = 'flex';
+};
+
+// --- 批量选择逻辑 ---
+
+// 6. 切换选择模式
+window.toggleStickerSelectMode = function () {
+    isStickerSelectMode = !isStickerSelectMode;
+
+    const btnIcon = document.querySelector('#st-btn-select svg');
+    const addBtn = document.getElementById('st-btn-add');
+    const bottomBar = document.getElementById('st-bottom-bar');
+
+    if (isStickerSelectMode) {
+        // 进入选择模式：图标变叉号或完成
+        btnIcon.innerHTML = `<path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>`; // X
+        addBtn.style.display = 'none'; // 隐藏添加按钮
+        bottomBar.classList.add('active'); // 弹出底部栏
+    } else {
+        // 退出选择模式
+        exitStickerSelectMode();
+    }
+
+    // 刷新网格以更新点击事件和样式
+    if (window.refreshStickerScroller) {
+        window.refreshStickerScroller();
+    }
+};
+
+// 辅助：彻底退出选择模式
+function exitStickerSelectMode() {
+    isStickerSelectMode = false;
+    selectedStickerIds.clear();
+
+    const btnIcon = document.querySelector('#st-btn-select svg');
+    if (btnIcon) btnIcon.innerHTML = `<path d="M18 7l-1.41-1.41-6.34 6.34 1.41 1.41L18 7zm4.24-1.41L11.66 16.17 7.48 12l-1.41 1.41L11.66 19l12-12-1.42-1.41zM.41 13.41L6 19l1.41-1.41L1.83 12 .41 13.41z"/>`;
+
+    const addBtn = document.getElementById('st-btn-add');
+    if (addBtn) addBtn.style.display = 'flex';
+
+    const bottomBar = document.getElementById('st-bottom-bar');
+    if (bottomBar) bottomBar.classList.remove('active');
+}
+
+// 7. 单选/取消
+window.toggleStickerSelection = function (id, el) {
+    if (selectedStickerIds.has(id)) {
+        selectedStickerIds.delete(id);
+        el.classList.remove('selected');
+    } else {
+        selectedStickerIds.add(id);
+        el.classList.add('selected');
+    }
+};
+
+// 8. 全选
+window.selectAllStickers = async function () {
+    // 直接查库获取所有 ID
+    const allIds = await window.dbSystem.stickers.where('packId').equals(currentStickerPackId).primaryKeys();
+
+    if (selectedStickerIds.size === allIds.length && allIds.length > 0) {
+        selectedStickerIds.clear();
+    } else {
+        selectedStickerIds.clear(); // 先清空，防止有旧的
+        allIds.forEach(id => selectedStickerIds.add(id));
+    }
+
+    // 刷新视图
+    if (window.refreshStickerScroller) window.refreshStickerScroller();
+};
+
+// 9. 批量删除
+window.batchDeleteStickers = async function () {
+    if (selectedStickerIds.size === 0) return alert("请至少选择一张表情");
+    if (!confirm(`确定要删除选中的 ${selectedStickerIds.size} 张表情吗？`)) return;
+
+    await window.dbSystem.stickers.bulkDelete(Array.from(selectedStickerIds));
+
+    selectedStickerIds.clear();
+    // 保持在选择模式，方便继续操作，或者退出都可以。这里保持
+    loadStickersInPack(currentStickerPackId);
+};
+
+// 10. 批量移动 - 打开弹窗
+window.openStickerMoveModal = async function () {
+    if (selectedStickerIds.size === 0) return alert("请至少选择一张表情");
+
+    // 获取所有分类
+    const packs = await window.dbSystem.sticker_packs.toArray();
+    const listEl = document.getElementById('st-move-list');
+
+    listEl.innerHTML = packs.map(p => {
+        // 判断是否是当前所在的分类
+        const isCurrent = (p.id === currentStickerPackId);
+
+        // 如果是当前分类，显示为灰色且不可点击；否则可点击
+        // 视觉上：当前分类给个淡灰色背景，别人给个白色背景
+        const bgStyle = isCurrent ? "background:#f5f5f5; color:#999; cursor:not-allowed;" : "background:#fff; cursor:pointer;";
+        const clickAction = isCurrent ? "" : `onclick="confirmBatchMoveStickers(${p.id})"`;
+        const statusText = isCurrent ? '<span style="font-size:12px;">(当前位置)</span>' : '';
+
+        return `
+        <div ${clickAction} 
+             style="padding:15px; border-bottom:1px solid #eee; display:flex; justify-content:space-between; align-items:center; ${bgStyle}">
+             <span style="font-weight:500;">${p.name}</span>
+             ${statusText}
+        </div>`;
+    }).join('');
+
+    document.getElementById('modal-sticker-move').style.display = 'flex';
+};
+
+// 11. 批量移动 - 执行
+window.confirmBatchMoveStickers = async function (targetPackId) {
+    // 1. 防止移动到当前分类
+    if (targetPackId === currentStickerPackId) return alert("不能移动到同一个分类");
+
+    // 2. 获取所有要移动的 ID
+    const ids = Array.from(selectedStickerIds);
+
+    // 3. 【修复报错的核心】
+    // 原来的写法用了 window.dbSystem.transaction(...)，但 db.js 没暴露这个功能。
+    // 改用 Promise.all 并行执行更新，效果一样且兼容性更好。
+    const tasks = ids.map(id => {
+        return window.dbSystem.stickers.update(id, { packId: targetPackId });
+    });
+
+    // 等待所有移动操作完成
+    await Promise.all(tasks);
+
+    // 4. 关闭弹窗并提示
+    document.getElementById('modal-sticker-move').style.display = 'none';
+    alert("移动完成");
+
+    // 5. 清空选择状态
+    selectedStickerIds.clear();
+
+    // 6. 【修复“空空如也”的问题】
+    // 移动完成后，直接跳转到目标分类，这样你就能立刻看到移动过去的内容了
+    await switchStickerPack(targetPackId);
+};
+
+// --- 添加弹窗逻辑 ---
+
+let tempStickerFile = null;
+
+// 2. [修改] 显示弹窗时重置批量输入框
+const originalShowAddStickerModal = window.showAddStickerModal;
+window.showAddStickerModal = function () {
+    const modal = document.getElementById('modal-sticker-add');
+    if (modal) modal.style.display = 'flex';
+
+    // 1. 重置“单张”表单
+    const urlInput = document.getElementById('st-url-input');
+    if (urlInput) urlInput.value = '';
+
+    const nameInput = document.getElementById('st-item-name');
+    if (nameInput) nameInput.value = '';
+
+    // 2. 重置“批量”表单
+    const batchInput = document.getElementById('st-batch-input');
+    if (batchInput) batchInput.value = '';
+
+    // 3. 🔴 [关键修复] 移除对 'st-pack-name' 的操作
+    // 因为我们把"新库"页面删了，这行代码如果不删就会报错
+    // if (document.getElementById('st-pack-name')) ... 
+
+    // 4. 重置预览区域
+    const preview = document.getElementById('st-preview');
+    if (preview) {
+        preview.src = "";
+        preview.style.display = 'none';
+    }
+
+    const ph = document.getElementById('st-ph');
+    if (ph) {
+        // 注意：如果你用了我上一步给的 Flex 布局 HTML，这里要设为 'flex' 才能居中
+        // 如果设为 'block' 可能会导致图标靠左
+        ph.style.display = 'flex';
+    }
+
+    // 5. 清理临时变量
+    tempStickerFile = null;
+
+    // 6. 默认切回“单张”标签页
+    if (typeof switchStickerAddTab === 'function') {
+        switchStickerAddTab('item');
+    }
+};
+
+// 3. [新增] 核心：批量导入逻辑
+window.saveStickerBatch = async function () {
+    if (!currentStickerPackId) return alert("请先在上方选择一个表情包分类库");
+
+    const rawText = document.getElementById('st-batch-input').value;
+    if (!rawText.trim()) return alert("请粘贴内容");
+
+    const lines = rawText.split('\n');
+    let successCount = 0;
+    const tasks = [];
+
+    // 显示加载状态
+    const btn = document.querySelector('#form-sticker-batch .btn-main');
+    const oldText = btn.innerText;
+    btn.innerText = "正在分析并导入...";
+    btn.disabled = true;
+
+    for (let line of lines) {
+        line = line.trim();
+        if (!line) continue;
+
+        // --- 智能宽容解析 ---
+        // 策略：寻找第一个 'http' 的位置，以此为界
+        const httpIndex = line.indexOf('http');
+
+        if (httpIndex !== -1) {
+            // 1. 提取链接 (从 http 开始直到行尾)
+            const url = line.substring(httpIndex).trim();
+
+            // 2. 提取名字 (http 之前的部分)
+            let name = line.substring(0, httpIndex).trim();
+
+            // 3. 清理名字末尾的垃圾字符 (冒号、空格)
+            // 正则含义：去除末尾的 中文冒号、英文冒号、空格
+            name = name.replace(/[:：\s]+$/, '');
+
+            // 如果没名字，给个默认的
+            if (!name) name = "未命名表情";
+
+            // 加入写入队列
+            tasks.push(window.dbSystem.stickers.add({
+                packId: currentStickerPackId,
+                src: url,
+                name: name // 存入数据库
+            }));
+
+            successCount++;
+        }
+    }
+
+    if (tasks.length > 0) {
+        await Promise.all(tasks);
+        alert(`成功导入 ${successCount} 个表情！`);
+        document.getElementById('modal-sticker-add').style.display = 'none';
+        loadStickersInPack(currentStickerPackId); // 刷新网格
+    } else {
+        alert("未能识别有效链接，请检查格式 (需包含 http/https)");
+    }
+
+    btn.innerText = oldText;
+    btn.disabled = false;
+};
+// 处理文件选择
+window.handleStickerFile = function (input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function (e) {
+        tempStickerFile = e.target.result; // Base64
+        const preview = document.getElementById('st-preview');
+        preview.src = tempStickerFile;
+        preview.style.display = 'block';
+        document.getElementById('st-ph').style.display = 'none';
+        // 清空 URL 输入框避免冲突
+        document.getElementById('st-url-input').value = '';
+    };
+    reader.readAsDataURL(file);
+};
+
+// 处理 URL 输入
+window.handleStickerUrl = function (input) {
+    const val = input.value.trim();
+    if (!val) return;
+    tempStickerFile = val; // 直接存 URL
+    const preview = document.getElementById('st-preview');
+    preview.src = val;
+    preview.style.display = 'block';
+    document.getElementById('st-ph').style.display = 'none';
+};
+
+
+
+// 保存新表情
+window.saveStickerItem = async function () {
+    if (!currentStickerPackId) return alert("请先创建一个分类");
+    if (!tempStickerFile) return alert("请先上传图片或输入链接");
+
+    // [新增] 获取输入的名字，没填就默认
+    let name = document.getElementById('st-item-name').value.trim();
+    if (!name) name = "未命名表情";
+
+    await window.dbSystem.stickers.add({
+        packId: currentStickerPackId,
+        src: tempStickerFile,
+        name: name // [关键] 保存名字
+    });
+
+    document.getElementById('modal-sticker-add').style.display = 'none';
+    loadStickersInPack(currentStickerPackId);
+};
+/* js/main.js - 追加备份还原逻辑 */
+
+// 1. 更新 Tab 切换逻辑，加入 backup
+window.switchStickerAddTab = function (tab) {
+    // 1. 注意这里：把 'pack' 删掉了，只保留存在的 tab
+    const tabs = ['item', 'batch', 'backup'];
+
+    tabs.forEach(t => {
+        const elTab = document.getElementById('st-tab-' + t);
+        const elForm = document.getElementById('form-sticker-' + t);
+
+        // 2. 安全检查：只有当元素真的存在时才操作
+        // 这样就算 HTML 里删错了东西，JS 也不会报错卡死
+        if (elTab && elForm) {
+            if (t === tab) {
+                elTab.classList.add('active');
+                elForm.style.display = 'block';
+            } else {
+                elTab.classList.remove('active');
+                elForm.style.display = 'none';
+            }
+        }
+    });
+};
+
+// 2. 辅助工具：Blob 转 Base64
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+
+// 3. 导出当前分类 (Export)
+window.exportCurrentPack = async function () {
+    if (!currentStickerPackId) return alert("未选中任何分类");
+
+    const btn = document.querySelector('#form-sticker-backup .btn-main');
+    const oldText = btn.innerText;
+    btn.innerText = "正在打包...";
+    btn.disabled = true;
+
+    try {
+        // 获取分类信息
+        const pack = await window.dbSystem.sticker_packs.get(currentStickerPackId);
+        // 获取所有表情
+        const stickers = await window.dbSystem.stickers.where('packId').equals(currentStickerPackId).toArray();
+
+        // 处理数据：如果是 Blob，转为 Base64 字符串以便存入 JSON
+        const exportData = {
+            packName: pack.name,
+            version: 1.0,
+            createDate: new Date().toISOString(),
+            items: []
+        };
+
+        for (const s of stickers) {
+            let srcStr = s.src;
+            // 如果是二进制对象，转 Base64
+            if (s.src instanceof Blob) {
+                srcStr = await blobToBase64(s.src);
+            }
+            exportData.items.push({
+                name: s.name,
+                src: srcStr
+            });
+        }
+
+        // 生成文件并下载
+        const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${pack.name}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        alert(`导出成功！包含 ${exportData.items.length} 个表情。`);
+
+    } catch (e) {
+        console.error(e);
+        alert("导出失败: " + e.message);
+    } finally {
+        btn.innerText = oldText;
+        btn.disabled = false;
+    }
+};
+
+// 4. 导入分类 (Import)
+window.importStickerPack = function (input) {
+    const file = input.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async function (e) {
+        try {
+            const json = JSON.parse(e.target.result);
+
+            if (!json.packName || !Array.isArray(json.items)) {
+                throw new Error("文件格式不正确，缺少 packName 或 items");
+            }
+
+            // 1. 创建新分类
+            // 为了防止重名，加个 (导入) 后缀，或者直接用 json 里的名字
+            const newPackName = json.packName + " (导入)";
+            const newPackId = await window.dbSystem.sticker_packs.add({ name: newPackName });
+
+            // 2. 写入表情
+            // Base64 字符串可以直接存入 DB，img src 能直接读
+            const tasks = json.items.map(item => {
+                return window.dbSystem.stickers.add({
+                    packId: newPackId,
+                    name: item.name || "未命名",
+                    src: item.src
+                });
+            });
+
+            await Promise.all(tasks);
+
+            alert(`导入成功！创建了新分类: ${newPackName}`);
+
+            // 关闭弹窗并跳转到新分类
+            document.getElementById('modal-sticker-add').style.display = 'none';
+            // 刷新侧边栏
+            await loadStickerPacks();
+            // 切换到新导入的包
+            switchStickerPack(newPackId);
+
+        } catch (err) {
+            console.error(err);
+            alert("导入失败: JSON 格式错误或文件损坏");
+        } finally {
+            // 清空 input 也就是允许重复导入同一个文件
+            input.value = '';
+        }
+    };
+    reader.readAsText(file);
+};
+window.openStickerPackManager = async function () {
+    document.getElementById('modal-st-pack-mgr').style.display = 'flex';
+    renderStickerPackMgrList();
+};
+
+// 2. 渲染列表
+async function renderStickerPackMgrList() {
+    const listEl = document.getElementById('st-pack-mgr-list');
+    const packs = await window.dbSystem.sticker_packs.toArray();
+
+    listEl.innerHTML = packs.map(p => {
+        return `
+        <div class="cat-mgr-item">
+            <span class="cat-mgr-name">${p.name}</span>
+            <div class="cat-mgr-del" onclick="doDeleteStickerPack(${p.id})" style="padding:4px; display:flex; align-items:center;">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FF3B30" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// 3. 执行删除
+window.doDeleteStickerPack = async function (id) {
+    if (!confirm("⚠️ 高能预警：\n这将删除该分类下的所有表情图片！\n确定要继续吗？")) return;
+
+    await window.dbSystem.deleteStickerPack(id);
+
+    // 刷新列表
+    renderStickerPackMgrList();
+
+    // 刷新外面的横条
+    currentStickerPackId = null; // 重置当前选中
+    loadStickerPacks();
+};
+window.openStickerPackManager = async function () {
+    // 显示弹窗 (HTML在下面定义)
+    document.getElementById('modal-st-pack-mgr').style.display = 'flex';
+    renderStickerPackMgrList();
+};
+
+// 2. 渲染管理列表 (带删除按钮)
+async function renderStickerPackMgrList() {
+    const listEl = document.getElementById('st-pack-mgr-list');
+    const packs = await window.dbSystem.sticker_packs.toArray();
+
+    // 如果没有分类
+    if (packs.length === 0) {
+        listEl.innerHTML = '<div style="text-align:center;color:#ccc;padding:20px;">暂无分类</div>';
+        return;
+    }
+
+    listEl.innerHTML = packs.map(p => {
+        return `
+        <div class="cat-mgr-item">
+            <span class="cat-mgr-name">${p.name}</span>
+            <div class="cat-mgr-del" onclick="doDeleteStickerPack(${p.id})">
+                <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#FF3B30" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <polyline points="3 6 5 6 21 6"></polyline>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                    <line x1="10" y1="11" x2="10" y2="17"></line>
+                    <line x1="14" y1="11" x2="14" y2="17"></line>
+                </svg>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+// 3. 执行删除操作
+window.doDeleteStickerPack = async function (id) {
+    if (!confirm("⚠️ 确定要删除这个分类吗？\n里面的所有表情图片也会被删除！")) return;
+
+    await window.dbSystem.deleteStickerPack(id);
+
+    // 刷新管理列表
+    await renderStickerPackMgrList();
+
+    // 刷新外面的横条
+    currentStickerPackId = null; // 重置选中状态
+    await loadStickerPacks();
+};
+
+// 4. 快速新建 (在管理弹窗里直接加)
+window.quickAddStickerPack = async function () {
+    const input = document.getElementById('quick-pack-name');
+    const name = input.value.trim();
+    if (!name) return;
+
+    await window.dbSystem.sticker_packs.add({ name });
+    input.value = '';
+
+    await renderStickerPackMgrList();
+    await loadStickerPacks();
+};
+let isChatPanelOpen = false;
+let currentChatStickerPackId = null;
+
+// 1. 切换面板开关
+window.toggleChatStickerPanel = async function () {
+    const panel = document.getElementById('chat-sticker-panel');
+
+    if (!isChatPanelOpen) {
+        // === 打开 ===
+        isChatPanelOpen = true;
+
+        // 🔴 核心修复：每次打开时，强制清空“当前选中的分类ID”
+        // 这样系统就会重新计算应该显示哪个分类，不会残留上个窗口的状态
+        currentChatStickerPackId = null;
+
+        panel.style.display = 'flex';
+        // 强制重绘触发动画
+        requestAnimationFrame(() => {
+            panel.classList.add('show');
+        });
+
+        // 加载内容
+        await loadChatStickerTabs();
+
+    } else {
+        // === 关闭 ===
+        closeChatStickerPanel();
+    }
+};
+
+// 2. 关闭面板
+window.closeChatStickerPanel = function () {
+    if (!isChatPanelOpen) return;
+
+    isChatPanelOpen = false;
+    const panel = document.getElementById('chat-sticker-panel');
+
+    // 移除 class 触发下沉动画
+    panel.classList.remove('show');
+
+    // 等待 300ms 动画结束后再隐藏
+    setTimeout(() => {
+        panel.style.display = 'none';
+        if (window.cleanChatStickerMemory) window.cleanChatStickerMemory();
+    }, 300);
+};
+
+// [补充] 点击消息列表区域时，自动关闭表情面板 (提升体验)
+// 在 openChatDetail 或 renderChatUI 绑定的点击事件里，或者全局加一个：
+document.getElementById('chat-body').addEventListener('click', function () {
+    if (isChatPanelOpen) {
+        closeChatStickerPanel();
+    }
+});
+
+// 3. 加载分类 Tab
+async function loadChatStickerTabs() {
+    const container = document.getElementById('chat-sticker-tabs');
+    if (!container) return;
+
+    if (!window.currentActiveChatId) return;
+    const chat = await window.dbSystem.chats.get(window.currentActiveChatId);
+
+    // 获取挂载列表
+    const mountedIds = chat.mountedStickerPacks || [];
+
+    // 🔴 核心修复：如果没有挂载，直接显示空提示，不加载所有
+    if (mountedIds.length === 0) {
+        container.innerHTML = '<div style="font-size:12px;color:#999;padding:0 10px;">本窗口未挂载表情包</div>';
+        if (window.cleanChatStickerMemory) window.cleanChatStickerMemory();
+        return;
+    }
+
+    // --- 下面是正常的加载逻辑 ---
+    const allPacks = await window.dbSystem.sticker_packs.toArray();
+    // 只显示挂载的
+    const visiblePacks = allPacks.filter(p => mountedIds.includes(p.id));
+
+    // 自动选中第一个有效的包
+    if (!currentChatStickerPackId || !visiblePacks.find(p => p.id === currentChatStickerPackId)) {
+        currentChatStickerPackId = visiblePacks.length > 0 ? visiblePacks[0].id : null;
+    }
+
+    let html = '';
+    visiblePacks.forEach(p => {
+        const active = p.id === currentChatStickerPackId ? 'active' : '';
+        html += `<div class="wb-cat-pill ${active}" onclick="switchChatStickerPack(${p.id})">${p.name}</div>`;
+    });
+
+    container.innerHTML = html;
+
+    if (currentChatStickerPackId && window.initChatStickerScroller) {
+        window.initChatStickerScroller(currentChatStickerPackId);
+    }
+}
+/* =========================================
+   在 main.js 末尾追加以下新逻辑
+   ========================================= */
+
+// --- 表情包挂载逻辑 ---
+
+// 1. 打开挂载选择器
+window.openStickerMountModal = async function () {
+    if (!window.currentActiveChatId) return;
+
+    const modal = document.getElementById('modal-sticker-mount');
+    modal.style.display = 'flex';
+
+    const listEl = document.getElementById('st-mount-list');
+    listEl.innerHTML = '<div style="padding:20px;text-align:center;">加载中...</div>';
+
+    // 获取当前会话
+    const chat = await window.dbSystem.chats.get(window.currentActiveChatId);
+    const mountedIds = new Set(chat.mountedStickerPacks || []); // 转Set方便查询
+
+    // 获取所有库
+    const allPacks = await window.dbSystem.sticker_packs.toArray();
+
+    if (allPacks.length === 0) {
+        listEl.innerHTML = '<div style="padding:20px;text-align:center;color:#999;">系统里还没有表情包，请去“我-我的表情”添加</div>';
+        return;
+    }
+
+    // 渲染列表
+    listEl.innerHTML = allPacks.map(p => {
+        const isChecked = mountedIds.has(p.id) ? 'checked' : '';
+        return `
+        <label class="st-mount-item">
+            <span style="font-size:15px; color:#333;">${p.name}</span>
+            <input type="checkbox" class="st-mount-checkbox" value="${p.id}" ${isChecked}>
+        </label>`;
+    }).join('');
+};
+
+// 2. 保存挂载设置
+window.saveStickerMount = async function () {
+    if (!window.currentActiveChatId) return;
+
+    // 获取所有勾选的 checkbox
+    const checkboxes = document.querySelectorAll('.st-mount-checkbox:checked');
+    const selectedIds = Array.from(checkboxes).map(cb => parseInt(cb.value));
+
+    // 更新数据库
+    await window.dbSystem.chats.update(window.currentActiveChatId, {
+        mountedStickerPacks: selectedIds
+    });
+
+    // 关闭弹窗
+    document.getElementById('modal-sticker-mount').style.display = 'none';
+
+    // 刷新面板显示
+    // 只有当面板是打开状态时才刷新，避免不必要的渲染
+    const panel = document.getElementById('chat-sticker-panel');
+    if (panel.style.display !== 'none') {
+        // 如果当前选中的包被移除了，这里会在 loadChatStickerTabs 内部处理
+        await loadChatStickerTabs();
+    }
+};
+
+// 4. 切换分类
+window.switchChatStickerPack = async function (id) {
+    currentChatStickerPackId = id;
+
+    // 刷新 Tab 样式
+    const tabs = document.querySelectorAll('#chat-sticker-tabs .wb-cat-pill');
+    // 重新渲染一遍简单点，或者手动操作 DOM class
+    loadChatStickerTabs();
+
+    // 刷新列表
+    if (window.initChatStickerScroller) {
+        window.initChatStickerScroller(id);
+    }
+};
+
+// 5. 发送表情
+// 5. 发送表情 (修复版：解决不显示问题 + 提速)
+window.sendStickerMsg = async function (blobOrUrl) {
+    if (!window.currentActiveChatId) return;
+
+    // 1. 获取当前 User 身份
+    const globalUser = await window.dbSystem.getCurrent();
+    const senderId = globalUser ? globalUser.id : null;
+    if (!senderId) return alert("身份错误");
+
+    // --- 准备两份数据 ---
+    // uiContent: 给界面展示用 (如果是Blob直接用，显示快)
+    // dbContent: 给数据库存库用 (必须是Base64字符串)
+    let uiContent = blobOrUrl;
+    let dbContent = blobOrUrl;
+
+    // 如果是 Blob (刚上传的图)，先异步转 Base64 备用
+    if (blobOrUrl instanceof Blob) {
+        dbContent = await blobToBase64(blobOrUrl);
+    }
+
+    // 2. 写入数据库
+    const newId = await window.dbSystem.addMessage(window.currentActiveChatId, dbContent, senderId, 'image');
+
+    // 3. 更新 UI (立即上屏)
+    // 注意：这里使用的是 window.chatScroller，前提是你已经按第一步修改了 render.js
+    if (window.chatScroller) {
+        window.chatScroller.append({
+            id: newId,
+            chatId: window.currentActiveChatId,
+            text: uiContent, // 🔴 传原始 Blob 给 UI，避免卡顿
+            senderId: senderId,
+            type: 'image',
+            time: new Date()
+        });
+
+        // 强制滚动到底部
+        setTimeout(() => {
+            const body = document.getElementById('chat-body');
+            if (body) body.scrollTop = body.scrollHeight;
+        }, 10);
+    } else {
+        console.error("找不到 chatScroller，请检查 render.js 是否已修改为 window.chatScroller");
+    }
+
+    // 4. 更新会话列表预览
+    await window.dbSystem.chats.update(window.currentActiveChatId, {
+        lastMsg: '[表情]',
+        updated: new Date()
+    });
+
+    // 5. 刷新首页列表预览
+    if (window.renderChatUI) window.renderChatUI();
+};
+
+// 辅助：在 main.js 里如果还没这个函数就加上
+function blobToBase64(blob) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onloadend = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+    });
+}
+async function getChatStickerContext(chat) {
+    // 1. 获取挂载的包 ID
+    const mountedIds = chat.mountedStickerPacks || [];
+    if (mountedIds.length === 0) return { prompt: "", nameMap: {}, srcMap: {} };
+
+    // 2. 从数据库查询这些包里的所有表情
+    const stickers = await window.dbSystem.stickers
+        .where('packId').anyOf(mountedIds)
+        .toArray();
+
+    if (stickers.length === 0) return { prompt: "", nameMap: {}, srcMap: {} };
+
+    // 3. 构建映射表
+    // nameMap: 名字 -> 图片数据 (用于 AI 发送 -> 渲染)
+    // srcMap:  图片数据 -> 名字 (用于 用户发送 -> AI 理解)
+    const nameMap = {};
+    const srcMap = {};
+    const names = [];
+
+    stickers.forEach(s => {
+        if (s.name) {
+            nameMap[s.name] = s.src;
+            srcMap[s.src] = s.name; // 注意：如果是Base64，作为Key可能会比较长，但对于几百个表情是没问题的
+            names.push(s.name);
+        }
+    });
+
+    // 4. 生成提示词
+    const prompt = `\n# Sticker Usage (表情包能力)\n当前会话已挂载表情包，你可以使用表情生动地表达情感。\n**发送规则**：若要发送表情，请严格输出 "[表情] 表情名" (例如: [表情] ${names[0] || '开心'})。\n**可用表情列表**：${names.join(', ')}\n`;
+
+    return { prompt, nameMap, srcMap };
+}
