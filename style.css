@@ -371,6 +371,9 @@ body {
     flex-direction: column;
     max-height: 80vh;
     /* 限制最大高度不超过屏幕的 80% */
+    overflow-y: auto;
+    /* 内容多了自动出现滚动条 */
+    -webkit-overflow-scrolling: touch;
 }
 
 .close-modal {
@@ -554,28 +557,37 @@ textarea.input-style {
 /* 5. 气泡微调（可选，增加一点美观度） */
 .msg-bubble {
     max-width: 70%;
-    padding: 10px 14px;
-    border-radius: 8px;
+    padding: 11px 16px;
+    /* 舒服的内边距 */
+    border-radius: 16px;
+    /* 16px：比方块圆，比胶囊方，最耐看 */
     font-size: 15px;
     line-height: 1.5;
     word-wrap: break-word;
-
-    /* 🔴 必须加这一行！否则换行符会被忽略，显示成一行 🔴 */
     white-space: pre-wrap;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    /* 极简阴影 */
+    position: relative;
+    height: auto;
+    overflow: visible;
 }
 
-/* 对方的消息：白色 */
+/* 对方 (左边)：纯白底，尾巴在左下 */
 .msg-row .msg-bubble {
-    background: #fff;
+    background: #ffffff;
     color: #333;
-    border-top-left-radius: 4px;
+    border-bottom-left-radius: 2px;
+    /* 关键：尾巴改到左下角，只有2px，很精致 */
 }
 
-/* 我的消息：莫兰迪紫 */
+/* 我 (右边)：主题色，尾巴在右下 */
 .msg-row.me .msg-bubble {
     background: var(--theme-purple);
+    /* 你的莫兰迪紫 */
     color: #fff;
-    border-top-right-radius: 4px;
+    border-bottom-right-radius: 2px;
+    /* 关键：尾巴改到右下角 */
+    border-bottom-left-radius: 16px;
 }
 
 /* --- style.css --- */
@@ -1009,80 +1021,7 @@ select.setting-input {
     }
 }
 
-.relation-list {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 8px;
-    margin-bottom: 15px;
-    min-height: 40px;
-    /* 没数据时也占位，避免抖动 */
-    padding: 10px;
-    background: #F9F9FC;
-    border-radius: 12px;
-    border: 1px solid #eee;
-}
 
-/* 关系胶囊标签 */
-.relation-tag {
-    display: inline-flex;
-    align-items: center;
-    background: #EAEBF7;
-    /* 极淡的莫兰迪紫 */
-    color: var(--theme-purple-dark);
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 13px;
-    font-weight: 500;
-    transition: all 0.2s;
-}
-
-.relation-tag:active {
-    transform: scale(0.95);
-    background: #D8DAF0;
-}
-
-/* 标签内的名字强调 */
-.relation-tag strong {
-    margin-right: 4px;
-    color: #555;
-}
-
-/* 删除小叉号 */
-.relation-del {
-    margin-left: 6px;
-    width: 16px;
-    height: 16px;
-    background: rgba(0, 0, 0, 0.05);
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 10px;
-    cursor: pointer;
-    color: #999;
-}
-
-/* 添加关系的按钮 (小圆钮) */
-.btn-add-relation {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 32px;
-    height: 32px;
-    border-radius: 50%;
-    background: #fff;
-    border: 1px dashed #ccc;
-    color: #999;
-    cursor: pointer;
-    font-size: 18px;
-}
-
-.btn-add-relation:active {
-    background: var(--theme-purple);
-    color: #fff;
-    border-color: transparent;
-}
 
 /* [新增] style.css: 群聊选择列表样式 */
 .select-list-container {
@@ -2746,4 +2685,229 @@ input:checked+.slider:before {
     width: 20px;
     height: 20px;
     accent-color: var(--theme-purple);
+}
+
+#chat-feature-panel {
+    /* 1. 位置与尺寸：完全复刻表情面板 */
+    position: absolute;
+    bottom: calc(65px + env(safe-area-inset-bottom));
+    left: 0;
+    width: calc(100% - 24px);
+    /* 宽度减去左右边距 */
+    margin: 0 12px;
+    /* 左右边距 */
+
+    height: 250px;
+    /* 🔥【关键】高度锁定 250px，和表情面板一样大 */
+
+    background: #fff;
+    border-radius: 20px;
+    box-shadow: 0 5px 25px rgba(0, 0, 0, 0.15);
+    z-index: 60;
+    box-sizing: border-box;
+
+    /* 2. 内部布局：改为 Grid 或 Flex 均可，这里用 Flex 换行 */
+    display: none;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    /* 内容靠上排列，不拉伸 */
+    padding: 25px 20px;
+    /* 增加内边距 */
+    gap: 15px 20px;
+    /* 行间距30px，列间距25px */
+
+    /* 动画 */
+    transform: translateY(20px);
+    opacity: 0;
+    transition: all 0.25s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+    pointer-events: none;
+}
+
+#chat-feature-panel.show {
+    transform: translateY(0);
+    opacity: 1;
+    pointer-events: auto;
+    display: flex !important;
+}
+
+/* 3. 按钮容器 */
+.feature-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+
+    /* 让点击区域适中，但视觉元素小 */
+    width: 60px;
+    cursor: pointer;
+}
+
+/* 4. 图标方块：缩小尺寸 */
+.feature-icon-box {
+    width: 42px;
+    /* 🔥 改小：原56 -> 现42 */
+    height: 42px;
+    /* 🔥 改小 */
+    border-radius: 12px;
+    /* 圆角也稍微改小 */
+
+    display: flex;
+    align-items: center;
+    justify-content: center;
+
+    background: #f0f0f0;
+    transition: transform 0.1s, opacity 0.1s;
+}
+
+/* 点击反馈 */
+.feature-item:active .feature-icon-box {
+    transform: scale(0.92);
+    opacity: 0.8;
+}
+
+/* 5. 文字：缩小颜色变淡 */
+.feature-name {
+    font-size: 11px;
+    /* 字体更细腻 */
+    color: #888;
+    /* 颜色更淡，显高级 */
+    text-align: center;
+    line-height: 1;
+}
+
+/* --- [优化] 语音条样式 --- */
+
+/* 1. 语音容器：改为 flex column，宽度自适应 */
+.voice-msg-container {
+    display: flex;
+    flex-direction: column;
+    /* 垂直排列：上面是波纹，下面是文字 */
+    justify-content: center;
+    min-width: 40px;
+    max-width: 240px;
+    cursor: pointer;
+    /* 关键：允许内容撑开高度 */
+    height: auto;
+}
+
+/* 2. 语音条本体 (波纹+时间) */
+.voice-bar-wrapper {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    height: 24px;
+    /* 保持顶部不做过多变化 */
+    flex-shrink: 0;
+}
+
+/* 3. 动态声波图标 */
+.voice-wave-icon {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    height: 16px;
+    margin-left: 2px;
+    /* 微调左边距 */
+}
+
+.wave-bar {
+    width: 3px;
+    border-radius: 2px;
+    background-color: #555;
+    /* 默认深色 */
+    animation: waveJump 1.2s infinite ease-in-out;
+}
+
+/* “我”的消息(紫色背景)，声波变白 */
+.msg-row.me .wave-bar {
+    background-color: #fff;
+}
+
+/* 随机跳动感 */
+.wave-bar:nth-child(1) {
+    height: 6px;
+    animation-duration: 0.8s;
+}
+
+.wave-bar:nth-child(2) {
+    height: 12px;
+    animation-delay: 0.1s;
+    animation-duration: 0.6s;
+}
+
+.wave-bar:nth-child(3) {
+    height: 8px;
+    animation-delay: 0.2s;
+    animation-duration: 0.9s;
+}
+
+.wave-bar:nth-child(4) {
+    height: 5px;
+    animation-delay: 0.3s;
+    animation-duration: 0.7s;
+}
+
+@keyframes waveJump {
+
+    0%,
+    100% {
+        transform: scaleY(1);
+        opacity: 0.7;
+    }
+
+    50% {
+        transform: scaleY(1.5);
+        opacity: 1;
+    }
+}
+
+/* 4. 时长文字 */
+.voice-duration {
+    font-size: 14px;
+    font-weight: 500;
+    opacity: 0.9;
+    margin-left: 4px;
+}
+
+/* 5. 折叠的文字转录区域 */
+.voice-transcription {
+    margin-top: 6px;
+    padding-top: 6px;
+    border-top: 1px solid rgba(0, 0, 0, 0.05);
+    font-size: 13px;
+    line-height: 1.4;
+    text-align: left;
+    word-break: break-all;
+
+    /* 核心动画机制 */
+    display: none;
+    /* 默认隐藏 */
+}
+
+/* 展开状态 */
+.voice-transcription.show {
+    display: block;
+    /* 撑开文档流 */
+    animation: expandFade 0.2s ease-out;
+    /* 加个小动画更像微信 */
+}
+
+@keyframes expandFade {
+    from {
+        opacity: 0;
+        transform: translateY(-5px);
+    }
+
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+input,
+textarea,
+select {
+    font-size: 16px !important;
+    /* 强制所有输入框字体不小于 16px */
+    max-height: 100%;
 }

@@ -12,7 +12,7 @@ db.version(8).stores({
     chats: '++id, name, *members, updated',
     settings: 'key',
     messages: '++id, chatId, senderId, time',
-    relations: '++id, fromId, toId',
+
     // [新增] wb_categories 表，以及在 worldbooks 里增加 categoryId 索引
     wb_categories: '++id, name, type', // type='global' or 'local'
     worldbooks: '++id, name, type, categoryId',
@@ -47,13 +47,8 @@ const dbSystem = {
     deleteMessage: async function (id) {
         return await db.messages.delete(id);
     },
-    // [新增] 获取某人的所有关系网 (无论是作为源头还是目标)
-    getRelations: async function (charId) {
-        // 找出 "我关联别人" 和 "别人关联我" 的所有记录
-        const from = await db.relations.where('fromId').equals(charId).toArray();
-        const to = await db.relations.where('toId').equals(charId).toArray();
-        return [...from, ...to];
-    },
+
+
     getWorldBooksPaged: async function (type, categoryId, limit = 20, offset = 0) {
         let collection = db.worldbooks.where('type').equals(type);
 
@@ -66,17 +61,9 @@ const dbSystem = {
         // 倒序 (新创建的在前) -> 跳过 offset -> 取 limit
         return await collection.reverse().offset(offset).limit(limit).toArray();
     },
-    // [新增] 添加/更新关系
-    addRelation: async function (fromId, toId, desc) {
-        // 简单的去重逻辑：如果已经存在这两个人的关系，则更新描述
-        // 这里为了简单，我们允许单向多重定义，或者你可以先查一下
-        return await db.relations.add({ fromId, toId, desc });
-    },
 
-    // [新增] 删除关系
-    deleteRelation: async function (id) {
-        return await db.relations.delete(id);
-    },
+
+
     open: async function () {
         if (!db.isOpen()) await db.open();
         await this.initDefault();

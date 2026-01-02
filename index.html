@@ -266,7 +266,7 @@
             </div>
 
             <div class="chat-footer">
-                <div class="icon-btn">
+                <div class="icon-btn" onclick="toggleFeaturePanel()">
                     <svg viewBox="0 0 24 24" width="28" height="28" fill="#9B9ECE">
                         <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
                     </svg>
@@ -288,7 +288,38 @@
                     </svg>
                 </div>
             </div>
+            <div id="chat-feature-panel">
+                <div class="feature-item" onclick="handleVoiceSend()">
+                    <div class="feature-icon-box" style="background: #9B9ECE;">
+                        <svg viewBox="0 0 24 24" width="22" height="22" fill="white">
+                            <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.66 9 5v6c0 1.66 1.34 3 3 3z" />
+                            <path
+                                d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                        </svg>
+                    </div>
+                    <div class="feature-name">语音</div>
+                </div>
 
+                <div class="feature-item">
+                    <div class="feature-icon-box" style="background: #9B9ECE;">
+                        <svg viewBox="0 0 24 24" width="22" height="22" fill="white">
+                            <path
+                                d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
+                        </svg>
+                    </div>
+                    <div class="feature-name">照片</div>
+                </div>
+
+                <div class="feature-item">
+                    <div class="feature-icon-box" style="background: #9B9ECE;">
+                        <svg viewBox="0 0 24 24" width="22" height="22" fill="white">
+                            <path
+                                d="M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z" />
+                        </svg>
+                    </div>
+                    <div class="feature-name">拍摄</div>
+                </div>
+            </div>
             <div id="chat-sticker-panel" style="display:none;">
                 <div class="sticker-panel-header-bar"
                     style="display:flex; align-items:center; border-bottom:1px solid #eee; background:#fff; padding-right:10px;">
@@ -401,11 +432,7 @@
                             placeholder="写点什么人设描述吧..."></textarea>
                     </div>
 
-                    <label class="setting-label">人际关系网</label>
-                    <div id="me-relation-container" class="relation-list"
-                        style="background:#fff; border:1px solid #eee;">
-                        <div class="btn-add-relation" onclick="openRelationSelector('me')">+</div>
-                    </div>
+
 
                     <div style="height:40px;"></div>
                     <button class="btn-main" onclick="savePersona()"
@@ -481,11 +508,7 @@
                         placeholder="输入详细的人设描述、性格特征或备注信息..."></textarea>
                 </div>
 
-                <label class="setting-label">人际关系网</label>
-                <div id="contact-relation-container" class="relation-list"
-                    style="background:#fff; border:1px solid #eee;">
-                    <div class="btn-add-relation" onclick="openRelationSelector('contact')">+</div>
-                </div>
+
 
                 <div style="height:40px;"></div> <button class="btn-main" onclick="saveContact()"
                     style="box-shadow: 0 5px 15px rgba(155, 158, 206, 0.4);">保存资料</button>
@@ -524,28 +547,7 @@
                 <div style="height:50px;"></div>
             </div>
         </div>
-        <div id="modal-relation-select" class="modal-overlay" style="z-index: 210;">
-            <div class="modal-card">
-                <div class="close-modal"
-                    onclick="document.getElementById('modal-relation-select').style.display='none'">×
-                </div>
-                <h3 style="margin-top:0;">添加关系</h3>
 
-                <p style="font-size:12px;color:#999;margin-bottom:10px;">选择一个对象，并定义关系 (如: 父亲, 宿敌, 暗恋对象)</p>
-
-                <label class="setting-label">关联对象</label>
-                <div class="input-wrapper">
-                    <select id="rel-target-select" class="setting-input" style="background-image:none;"></select>
-                </div>
-
-                <label class="setting-label">关系描述</label>
-                <div class="input-wrapper">
-                    <input type="text" id="rel-desc-input" class="setting-input" placeholder="例如：前男友、合伙人...">
-                </div>
-
-                <button class="btn-main" onclick="confirmAddRelation()">确定添加</button>
-            </div>
-        </div>
         <div id="app-chat-settings" class="app-window" style="background: #F2F2F7;">
             <div class="app-header" style="background: #fff;">
                 <div style="height:calc(10px + env(safe-area-inset-top));"></div>
@@ -1249,6 +1251,43 @@
     margin-top: 10px;
 ">
                 </div>
+            </div>
+        </div>
+        <div id="modal-voice-input" class="modal-overlay" style="z-index: 700;">
+            <div class="modal-card" style="padding: 0; overflow: hidden;">
+
+                <div style="padding: 24px 24px 0 24px; position: relative; background: #fff; z-index: 10;">
+                    <div class="close-modal" onclick="document.getElementById('modal-voice-input').style.display='none'"
+                        style="top: 20px; right: 20px;">×</div>
+
+                    <h3 style="margin-top:0;">录制语音</h3>
+                </div>
+
+                <div
+                    style="flex: 1; overflow-y: auto; padding: 20px 24px 24px 24px; -webkit-overflow-scrolling: touch;">
+
+                    <div style="display:flex; flex-direction:column; align-items:center; margin-bottom: 20px;">
+                        <div
+                            style="width:60px; height:60px; background:#9B9ECE; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow: 0 4px 15px rgba(155, 158, 206, 0.4);">
+                            <svg viewBox="0 0 24 24" width="30" height="30" fill="white">
+                                <path
+                                    d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.66 9 5v6c0 1.66 1.34 3 3 3z" />
+                                <path
+                                    d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z" />
+                            </svg>
+                        </div>
+                        <div style="font-size:12px; color:#999; margin-top:10px;">语音转文字中...</div>
+                    </div>
+
+                    <label class="setting-label">识别内容</label>
+                    <div class="input-wrapper">
+                        <textarea id="voice-text-input" class="setting-input" style="height:80px; padding-top:10px;"
+                            placeholder="点击此处编辑语音内容..."></textarea>
+                    </div>
+
+                    <button class="btn-main" onclick="submitVoiceInput()" style="background:#9B9ECE;">发送语音</button>
+                </div>
+
             </div>
         </div>
     </div>

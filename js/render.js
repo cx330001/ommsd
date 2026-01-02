@@ -365,7 +365,36 @@ class ChatVirtualScroller {
         // 首次打开，强制滚到底部
         setTimeout(() => this.scrollToBottom(), 0);
     }
+    toggleExpand(msgId) {
+        // 1. 找到数据对象
+        const targetId = String(msgId);
+        const index = this.messages.findIndex(m => String(m.id) === targetId);
+        if (index === -1) return;
 
+        const msg = this.messages[index];
+
+        // 2. 修改数据状态 (持久化，防止滚动丢失)
+        msg.isExpanded = !msg.isExpanded;
+
+        // 3. 【关键】清除该条目的高度缓存
+        // 因为高度变了，必须让虚拟列表下次渲染时重新计算高度
+        // 这里的 index 是在整个 messages 数组中的索引
+        this.heightCache.delete(index);
+
+        // 4. 强制重新渲染
+        // 这会生成带有 .show 类的 HTML，并触发 updateHeights 重新计算高度
+        this.render();
+
+        // 5. [可选] 如果展开导致内容超出屏幕底部，稍微滚一下
+        if (msg.isExpanded) {
+            // 简单的防遮挡逻辑：如果是在最底部，适当上滑
+            // 这里的逻辑可以根据体验细调
+            const body = this.container;
+            if (body.scrollHeight - body.scrollTop - body.clientHeight < 100) {
+                body.scrollTop += 50;
+            }
+        }
+    }
     getItemHeight(index) {
         return this.heightCache.get(index) || this.estimatedItemHeight;
     }
@@ -551,6 +580,21 @@ class ChatVirtualScroller {
                 background: rgba(0,0,0,0.03); /* 加个淡底色，加载慢时也有个框 */
              " 
              loading="lazy">`;
+            } else if (msg.type === 'audio') {
+                // 模拟语音条：图标 + 时长/内容
+                const len = msg.text ? msg.text.length : 0;
+                const duration = Math.min(60, Math.max(2, Math.ceil(len / 2)));
+                const safeText = this.escapeHtml(msg.text || "语音转文字...");
+
+                // === 🔴 核心修改 1：读取数据中的展开状态 ===
+                // 如果 msg.isExpanded 为 true，则加上 'show' 类
+                const textClass = msg.isExpanded ? "voice-transcription show" : "voice-transcription";
+
+                bubbleStyleOverride = "padding: 8px 13px; display: flex; align-items: center; min-height: 40px; box-sizing: border-box; flex-wrap: wrap;"; // flex-wrap 允许换行
+
+                // === 🔴 核心修改 2：HTML 结构调整，onclick 改为调用 toggleExpand ===
+                // 注意：这里 onclick 不再直接操作 DOM，而是调用 scroller 的方法
+                contentHtml = `<div class="voice-msg-container" style="width:100%" onclick="event.stopPropagation(); window.chatScroller.toggleExpand(${msg.id})"><div class="voice-bar-wrapper"><div class="voice-wave-icon"><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div><div class="wave-bar"></div></div><span class="voice-duration">${duration}"</span></div><div class="${textClass}">${safeText}</div></div>`;
             } else {
                 // === 文本消息处理 (保持原样) ===
                 contentHtml = this.escapeHtml(msg.text);

@@ -69,14 +69,9 @@ window.closeApp = function (id) {
                 window.currentContactEditId = null;
                 window.tempContactAvatar = null;
 
-                // 4. 清空暂存的关系网数据
-                if (typeof tempRelations !== 'undefined') {
-                    tempRelations = [];
-                }
 
-                // 5. 清空关系网 DOM (下次打开时由 openContactPage 重新渲染)
-                const relContainer = document.getElementById('contact-relation-container');
-                if (relContainer) relContainer.innerHTML = '';
+
+
 
                 console.log("联系人编辑页资源已释放");
             }, 400);
@@ -276,10 +271,7 @@ window.showPersonaForm = function (isEdit = false) {
         // 新建模式：重置表单
         window.currentEditingId = null;
         resetForm();
-        // 初始化空关系网
-        tempRelations = [];
-        relationEditMode = 'me';
-        renderTempRelations('me-relation-container');
+
     }
 };
 
@@ -314,18 +306,8 @@ window.editPersonaById = async function (id) {
         document.getElementById('ph-file').style.display = 'flex';
     }
 
-    // 关系网回显
-    tempRelations = [];
-    const rels = await window.dbSystem.getRelations(id);
-    for (const r of rels) {
-        const targetId = (r.fromId === id) ? r.toId : r.fromId;
-        const target = await window.dbSystem.getChar(targetId);
-        if (target) {
-            tempRelations.push({ toId: targetId, targetName: target.name, desc: r.desc });
-        }
-    }
-    relationEditMode = 'me';
-    renderTempRelations('me-relation-container');
+
+
 };
 
 // 7. 适配主页那个“编辑当前身份”的小铅笔
@@ -356,12 +338,8 @@ window.savePersona = async function () {
         finalId = await window.dbSystem.addChar(name, desc, tempAvatar, 1); // type=1 是 Me
     }
 
-    // 保存关系
-    const oldRels = await window.dbSystem.getRelations(finalId);
-    await Promise.all(oldRels.map(r => window.dbSystem.deleteRelation(r.id)));
-    if (tempRelations.length > 0) {
-        await Promise.all(tempRelations.map(r => window.dbSystem.addRelation(finalId, r.toId, r.desc)));
-    }
+
+
 
     // 如果是新建的，自动设为当前
     if (!window.currentEditingId) {
@@ -435,10 +413,8 @@ window.openContactPage = function () {
 
     resetContactForm();
 
-    // 初始化关系网
-    tempRelations = [];
-    relationEditMode = 'contact';
-    renderTempRelations('contact-relation-container');
+
+
 };
 
 // [修改] 打开编辑页面 (修改)
@@ -477,18 +453,7 @@ window.editContact = async function (id) {
         document.getElementById('c-ph-file').style.display = 'flex';
     }
 
-    // 关系网回显
-    tempRelations = [];
-    const rels = await window.dbSystem.getRelations(id);
-    for (const r of rels) {
-        const targetId = (r.fromId === id) ? r.toId : r.fromId;
-        const target = await window.dbSystem.getChar(targetId);
-        if (target) {
-            tempRelations.push({ toId: targetId, targetName: target.name, desc: r.desc });
-        }
-    }
-    relationEditMode = 'contact';
-    renderTempRelations('contact-relation-container');
+
 };
 
 // [修改] 关闭页面
@@ -514,19 +479,11 @@ window.saveContact = async function () {
     if (finalId) {
         await window.dbSystem.updateChar(finalId, name, desc, tempContactAvatar); // 注意这里用 updateChar 统一接口
     } else {
-        // 新增 type=0 (NPC/好友)
+        // 新增 type=0 (好友)
         finalId = await window.dbSystem.addChar(name, desc, tempContactAvatar, 0);
     }
 
-    // 保存关系网 (先删旧，再加新)
-    const oldRels = await window.dbSystem.getRelations(finalId);
-    await Promise.all(oldRels.map(r => window.dbSystem.deleteRelation(r.id)));
 
-    if (tempRelations.length > 0) {
-        await Promise.all(tempRelations.map(r => {
-            return window.dbSystem.addRelation(finalId, r.toId, r.desc);
-        }));
-    }
 
     // 关闭页面并刷新列表
     window.closeContactPage();
@@ -1121,10 +1078,8 @@ ${stickerCtx.prompt}
 请严格遵守指令格式，可以连续输出多条指令：
 1. 发送文本："[消息] 角色名：内容"
 2. 发送表情："[表情] 角色名：表情名"
-3. 示例：
-   [消息] 法师：收到，马上行动！
-   [表情] 法师：严肃
-   [表情] 团长：开心
+3. 发送语音："[语音] 角色名：语音转文字内容"
+
 `.trim();
 
     // 4. 构建历史记录 (图片 -> 文本反解)
@@ -1133,22 +1088,27 @@ ${stickerCtx.prompt}
 
     for (const msg of recentMessages) {
         let name = idToNameMap[msg.senderId] || "未知";
+        let msgTag = "[消息]";
         let contentText = msg.text;
 
-        // --- 反解逻辑：如果是图片消息，尝试转回 [表情] xxx ---
+        // --- 反解逻辑 ---
         if (msg.type === 'image') {
             const stickerName = stickerCtx.srcMap[msg.text];
             if (stickerName) {
-                // AI 看到的是： [表情] 法师：开心
-                // 这里我们在历史记录里直接模拟成 AI 的输出格式，方便它模仿
+                // 如果是表情包，模拟成 AI 的指令格式
                 apiMessages.push({
-                    role: "assistant", // 假装是 AI 发的指令
+                    role: "assistant",
                     content: `[表情] ${name}：${stickerName}`
                 });
                 continue; // 跳过常规 push
             } else {
                 contentText = "[图片]";
+                msgTag = "[消息]";
             }
+        }
+        // === 🔴 修复点：增加语音判断 ===
+        else if (msg.type === 'audio') {
+            msgTag = "[语音]";
         }
         // --------------------------------------------------
 
@@ -1158,7 +1118,7 @@ ${stickerCtx.prompt}
         // 为了保持格式统一，我们把历史记录也包装成Tag格式
         apiMessages.push({
             role: role,
-            content: `[消息] ${name}：${contentText}`
+            content: `${msgTag} ${name}：${contentText}`
         });
     }
 
@@ -1200,7 +1160,7 @@ ${stickerCtx.prompt}
     // \s* : \s* -> 匹配 冒号
     // (.+?)              -> 捕获 内容 (非贪婪)
     // (?=\s*\[(?:消息|表情)\]|$) -> 向前看：直到遇到下一个 Tag 或 字符串结尾
-    const blockRegex = /\[(消息|表情)\]\s*([^:]+?)\s*:\s*(.+?)(?=\s*\[(?:消息|表情)\]|$)/gis;
+    const blockRegex = /\[(消息|表情|语音)\]\s*([^:]+?)\s*:\s*(.+?)(?=\s*\[(?:消息|表情|语音)\]|$)/gis;
 
     let match;
     let msgQueue = [];
@@ -1226,6 +1186,9 @@ ${stickerCtx.prompt}
                 // AI 乱编了一个表情名，降级为文本发送，或者你要是嫌烦可以不发
                 // msgQueue.push({ senderId: speakerId, text: `(试图发送表情: ${body})`, type: 'text' });
             }
+        } else if (tagType === '语音') {
+            // [新增] 语音处理
+            msgQueue.push({ senderId: speakerId, text: body, type: 'audio' });
         } else {
             // --- 处理消息 ---
             msgQueue.push({ senderId: speakerId, text: body, type: 'text' });
@@ -1304,19 +1267,11 @@ async function handlePrivateChat(chat, userPersona, hostRec, modelRec, dbKeys, t
     // 3. 准备扫描历史以触发世界书
     const historyForScan = messages.slice(-limit).map(m => ({ content: m.text }));
     const worldInfo = await window.injectWorldInfo(chat, historyForScan);
+    const currentPartnerInfo = `当前对话对象：${userPersona.name}\n对象简介：${userPersona.desc || "无"}`;
 
-    // 4. 构建关系描述
-    const relations = await window.dbSystem.getRelations(nextSpeakerId);
-    const myRels = relations
-        .filter(r => (r.fromId === nextSpeakerId && r.toId === userPersona.id) || (r.toId === nextSpeakerId && r.fromId === userPersona.id))
-        .map(r => r.desc)
-        .join('、');
-    const relationStr = myRels ? `(关系：${myRels})` : "";
 
-    const currentPartnerInfo = `
-【对话对象】${userPersona.name} ${relationStr}
-【对象设定】${userPersona.desc || "无特殊设定"}
-`.trim();
+
+
     // 5. [核心修改] 重构 System Prompt：大幅强化人设权重
     const systemPrompt = `
 # Roleplay Protocol (最高指令)
@@ -1339,7 +1294,7 @@ ${stickerCtx.prompt}
 2. **口语化**：严禁书面语，使用符合你人设的口癖、语气词。
 3. **格式强制**：每一行必须严格使用 "[消息] ${speaker.name}：内容" 的格式。
 4. 如果要发表情，请单独一行写 "[消息] ${speaker.name}：[表情] 表情名"。
-
+5. 如果要发语音，请单独一行写 "[消息] ${speaker.name}：[语音] 语音内容"。
 # Deep Immersion (深度沉浸指令)
 1. 你的每一次回复必须严格符合【核心设定】中的性格和背景。
 2. 如果【世界认知】中有关于当前话题的设定，必须优先遵守。
@@ -1361,22 +1316,31 @@ ${stickerCtx.prompt}
         else if (msg.senderId === userPersona.id) prefixName = userPersona.name;
 
         // --- 【核心修改：反解图片】 ---
+        let msgTag = "[消息]";
         let contentText = msg.text;
+
+        // --- 类型判断逻辑 ---
         if (msg.type === 'image') {
             // 尝试从 srcMap 中找到对应的表情名
             const stickerName = stickerCtx.srcMap[msg.text];
             if (stickerName) {
-                contentText = `[表情] ${stickerName}`; // AI 看到的是 "[表情] 滑稽"
+                contentText = stickerName; // 直接用表情名，标签由 msgTag 控制
+                msgTag = "[表情]";        // 🔴 标记为表情
             } else {
-                contentText = "[图片]"; // 没识别出来的图片
+                contentText = "[图片]";
+                msgTag = "[消息]";
             }
+        }
+        else if (msg.type === 'audio') {
+            // 🔴 标记为语音
+            msgTag = "[语音]";
         }
         // ---------------------------
 
         const role = (msg.senderId === userPersona.id) ? "user" : "assistant";
         apiMessages.push({
             role: role,
-            content: `[消息] ${prefixName}：${contentText}`
+            content: `${msgTag} ${prefixName}：${contentText}`
         });
     }
 
@@ -1427,7 +1391,9 @@ ${stickerCtx.prompt}
                 // --- 【核心修改：检测 AI 是否发了表情】 ---
                 // 格式如： [表情] 开心
                 const stickerRegex = /^\[表情\]\s*(.+)$/i;
+                const voiceRegex = /^\[语音\]\s*(.+)$/i;
                 const match = text.match(stickerRegex);
+                const voiceMatch = text.match(voiceRegex);
 
                 if (match) {
                     const stickerName = match[1].trim();
@@ -1440,6 +1406,12 @@ ${stickerCtx.prompt}
                         // AI 瞎编了一个不存在的表情，转为普通文本吐槽回去，或者直接显示文本
                         msgQueue.push({ speaker: name, text: `(试图发送表情 "${stickerName}" 失败)`, type: 'text' });
                     }
+                } else if (voiceMatch) {
+                    // CASE B: 是语音 (新增部分在这里！) 👈
+                    const voiceContent = voiceMatch[1].trim();
+                    // 推入队列，类型标记为 audio
+                    msgQueue.push({ speaker: name, text: voiceContent, type: 'audio' });
+
                 } else {
                     // 普通文本
                     msgQueue.push({ speaker: name, text: text, type: 'text' });
@@ -1495,91 +1467,7 @@ ${stickerCtx.prompt}
         await window.dbSystem.chats.update(chat.id, { lastMsg: previewText, updated: new Date() });
     }
 }
-/* =========================================
-   [新增] 关系网核心逻辑 (请复制到 main.js 末尾)
-   ========================================= */
 
-// 1. 全局变量：暂存正在编辑的关系
-let tempRelations = [];
-let relationEditMode = 'me'; // 'me' 或者 'contact'
-
-// 2. 渲染紫色胶囊标签
-function renderTempRelations(containerId) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-
-    // 保留最后的加号按钮
-    const addBtnHTML = `<div class="btn-add-relation" onclick="openRelationSelector('${relationEditMode}')">+</div>`;
-
-    // 生成标签 HTML
-    const tagsHTML = tempRelations.map((r, index) => {
-        return `
-        <div class="relation-tag">
-            <strong>${r.targetName}</strong> 
-            <span>${r.desc}</span>
-            <div class="relation-del" onclick="removeTempRelation(${index}, '${containerId}')">×</div>
-        </div>`;
-    }).join('');
-
-    container.innerHTML = tagsHTML + addBtnHTML;
-}
-
-// 3. 点击标签上的 X 删除
-window.removeTempRelation = function (index, containerId) {
-    tempRelations.splice(index, 1); // 从数组里删掉
-    renderTempRelations(containerId); // 重新画
-};
-
-// 4. 打开“添加关系”的小弹窗
-window.openRelationSelector = async function (mode) {
-    relationEditMode = mode;
-    const modal = document.getElementById('modal-relation-select');
-    const select = document.getElementById('rel-target-select');
-
-    modal.style.display = 'flex';
-    document.getElementById('rel-desc-input').value = '';
-
-    // 获取当前正在编辑的主角ID (为了在列表中排除自己)
-    let currentId = (mode === 'me') ? window.currentEditingId : window.currentContactEditId;
-
-    // 获取数据库里所有人
-    const allChars = await window.dbSystem.chars.toArray();
-
-    // 渲染下拉框：排除掉自己
-    select.innerHTML = allChars
-        .filter(c => c.id !== currentId)
-        .map(c => `<option value="${c.id}">${c.name} (${c.type === 1 ? '我' : 'NPC'})</option>`)
-        .join('');
-};
-
-// 5. 弹窗点击“确定添加”
-window.confirmAddRelation = function () {
-    const select = document.getElementById('rel-target-select');
-    const input = document.getElementById('rel-desc-input');
-
-    const targetId = parseInt(select.value);
-    // 获取选中的名字，方便显示
-    let targetName = "未知";
-    if (select.selectedIndex >= 0) {
-        targetName = select.options[select.selectedIndex].text.split(' (')[0];
-    }
-    const desc = input.value.trim() || "关联";
-
-    if (!targetId) return;
-
-    // 加入临时数组
-    tempRelations.push({
-        toId: targetId,
-        targetName: targetName,
-        desc: desc
-    });
-
-    document.getElementById('modal-relation-select').style.display = 'none';
-
-    // 重新渲染标签区域
-    const containerId = (relationEditMode === 'me') ? 'me-relation-container' : 'contact-relation-container';
-    renderTempRelations(containerId);
-};
 /* =========================================
    [新增] 群聊创建逻辑
    ========================================= */
@@ -3990,6 +3878,7 @@ window.closeChatStickerPanel = function () {
 // [补充] 点击消息列表区域时，自动关闭表情面板 (提升体验)
 // 在 openChatDetail 或 renderChatUI 绑定的点击事件里，或者全局加一个：
 document.getElementById('chat-body').addEventListener('click', function () {
+
     if (isChatPanelOpen) {
         closeChatStickerPanel();
     }
@@ -4210,3 +4099,111 @@ async function getChatStickerContext(chat) {
 
     return { prompt, nameMap, srcMap };
 }
+let isFeaturePanelOpen = false;
+
+window.toggleFeaturePanel = function () {
+    const panel = document.getElementById('chat-feature-panel');
+    const stickerPanel = document.getElementById('chat-sticker-panel');
+
+    // 1. 如果表情面板开着，先关掉它
+    if (window.closeChatStickerPanel && stickerPanel && stickerPanel.classList.contains('show')) {
+        window.closeChatStickerPanel();
+    }
+
+    if (!isFeaturePanelOpen) {
+        // === 打开 ===
+        isFeaturePanelOpen = true;
+        panel.style.display = 'flex'; // 先让它存在
+        // 延时一帧加 class，触发上浮动画
+        requestAnimationFrame(() => {
+            panel.classList.add('show');
+        });
+    } else {
+        // === 关闭 ===
+        window.closeFeaturePanel();
+    }
+};
+
+window.closeFeaturePanel = function () {
+    if (!isFeaturePanelOpen) return;
+    isFeaturePanelOpen = false;
+
+    const panel = document.getElementById('chat-feature-panel');
+    panel.classList.remove('show'); // 移除 class，触发下沉消失动画
+
+    // 等动画播完再隐藏 DOM
+    setTimeout(() => {
+        panel.style.display = 'none';
+    }, 300);
+};
+
+
+
+// 处理语音发送点击
+window.handleVoiceSend = function () {
+    // 先关闭底部的功能面板
+    window.closeFeaturePanel();
+
+    // 打开弹窗
+    const modal = document.getElementById('modal-voice-input');
+    const input = document.getElementById('voice-text-input');
+
+    // 清空上次的内容
+    input.value = '';
+    modal.style.display = 'flex';
+
+    // 自动聚焦输入框
+    setTimeout(() => input.focus(), 100);
+};
+
+// 2. 点击弹窗里的“发送”按钮
+window.submitVoiceInput = function () {
+    const input = document.getElementById('voice-text-input');
+    const text = input.value.trim();
+
+    if (!text) return; // 如果没字，就不发
+
+    // 调用核心发送函数 (如果你还没加这个函数，请看下面)
+    window.sendVoiceMsg(text);
+
+    // 关闭弹窗
+    document.getElementById('modal-voice-input').style.display = 'none';
+};
+
+// 3. 核心发送函数 (如果之前还没加，请加上)
+window.sendVoiceMsg = async function (content) {
+    if (!window.currentActiveChatId) return;
+
+    const user = await window.dbSystem.getCurrent();
+    const senderId = user ? user.id : null;
+    if (!senderId) return;
+
+    // 存入数据库 type='audio'
+    const newId = await window.dbSystem.addMessage(window.currentActiveChatId, content, senderId, 'audio');
+
+    // 上屏渲染
+    if (window.chatScroller) {
+        window.chatScroller.append({
+            id: newId,
+            chatId: window.currentActiveChatId,
+            text: content,
+            senderId: senderId,
+            type: 'audio',
+            time: new Date()
+        });
+        // 滚到底部
+        const body = document.getElementById('chat-body');
+        if (body) setTimeout(() => body.scrollTop = body.scrollHeight, 10);
+    }
+
+    // 更新列表预览
+    await window.dbSystem.chats.update(window.currentActiveChatId, {
+        lastMsg: '[语音]',
+        updated: new Date()
+    });
+};
+window.toggleVoiceText = function (el) {
+    // 逻辑已移至 render.js 的 toggleExpand，此处留空即可
+    // 如果你保留了旧的 onclick="window.toggleVoiceText(this)"，请务必去 render.js 改掉它
+    console.log("请更新 render.js 中的 onclick 事件");
+};
